@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher Bangkok</title>
+<meta name="description" content="แผนที่เฝ้าระวังน้ำท่วมกรุงเทพฯ และปริมณฑล จากข้อมูลเปิด อัปเดตทุก 15 นาที">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>กรุงเทพฯ และปริมณฑล</span></h1>
+    <p class="sub">ข้อมูลเปิดจากหลายแหล่ง · อัปเดตอัตโนมัติทุก 15 นาที</p>
+  </div>
+  <div class="status">
+    <span id="updated">กำลังโหลด…</span>
+    <button id="reload" type="button" title="โหลดข้อมูลใหม่">รีเฟรช</button>
+  </div>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main class="layout">
+  <aside class="panel" id="panel">
+    <section class="summary" id="summary"></section>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="alerts" aria-selected="true">คำเตือน</button>
+      <button role="tab" data-tab="news">ข่าว/โซเชียล</button>
+      <button role="tab" data-tab="sources">แหล่งข้อมูล</button>
+      <button role="tab" data-tab="about">วิธีคิด</button>
+    </nav>
+    <section class="tab" id="tab-alerts"></section>
+    <section class="tab" id="tab-news" hidden></section>
+    <section class="tab" id="tab-sources" hidden></section>
+    <section class="tab" id="tab-about" hidden>
+      <h3>ระบบประเมินอย่างไร</h3>
+      <p>แต่ละโซน (รัศมี ~9 กม.) รวมหลักฐานจากสถานีใกล้เคียงเป็นคะแนน:</p>
+      <table class="rules">
+        <tr><th>หลักฐาน</th><th>เกณฑ์</th><th>คะแนน</th></tr>
+        <tr><td>ฝนสะสม 24 ชม.</td><td>&gt;35 / &gt;90 มม. (เกณฑ์ TMD)</td><td>1 / 2</td></tr>
+        <tr><td>ฝน 1 ชม.</td><td>≥20 / ≥40 มม.</td><td>1 / 2</td></tr>
+        <tr><td>ระดับน้ำเทียบตลิ่ง</td><td>≥80% / ≥90% หรือล้น 1 จุด / ล้น ≥2 จุด</td><td>1 / 2 / 3</td></tr>
+        <tr><td>น้ำกำลังขึ้น</td><td>≥5 ซม. จากค่าก่อนหน้า</td><td>1</td></tr>
+        <tr><td>ฝนคาดการณ์ 3 ชม.</td><td>≥10 / ≥30 มม.</td><td>1 / 2</td></tr>
+        <tr><td>รายงานข่าว/โซเชียลในพื้นที่</td><td>≥1 รายการใน 24 ชม.</td><td>1</td></tr>
+      </table>
+      <p>ระดับ: ปกติ &lt;3 · เฝ้าระวัง 3–4 · เตือนภัย 5–7 · อันตราย ≥8</p>
+      <p>ความเชื่อมั่น: สูง = ฝนวัด + ระดับน้ำ + พยากรณ์ สดทั้งหมด และมีรายงานจากพื้นที่; ปานกลาง = หลักฐานสด ≥2 ประเภท; ต่ำ = 1 ประเภท</p>
+      <p>ข้อมูลที่เก่ากว่า 3 ชม. หรือค่าผิดปกติ (ฝน &gt;150 มม./ชม.) จะถูกติดธงและไม่นำมาคิดคะแนน</p>
+      <p>หลักฐานแยกเป็น 4 กลุ่ม: <b>ตรวจวัดแล้ว</b> · <b>แบบจำลองคาดการณ์</b> · <b>รายงาน (รอยืนยัน)</b> · <b>ยืนยันผลกระทบแล้ว</b> (CCTV/ดาวเทียม — ยังต้องตรวจด้วยคน)</p>
+      <p class="warn">ระบบทดลอง ไม่ใช่ประกาศทางการ โปรดติดตาม กทม. 1555 / ปภ. 1784 / กรมอุตุนิยมวิทยา</p>
+      <h3>แหล่งข้อมูลอื่นที่ควรเปิดดู</h3>
+      <ul class="links" id="links"></ul>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่"></div>
+    <div class="radar-ctl" id="radarCtl" hidden>
+      <button id="radarPlay" type="button">▶ เรดาร์</button>
+      <span id="radarTime"></span>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+name: Floodwatcher data
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: floodwatcher
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch and assess
+        env:
+          FLOODWATCHER_SOCIAL_FEEDS: ${{ vars.FLOODWATCHER_SOCIAL_FEEDS }}
+        run: python fetch_data.py
+
+      - name: Commit data
+        run: |
+          git config user.name "floodwatcher-bot"
+          git config user.email "action@github.com"
+          git add data/latest.json
+          git diff --cached --quiet && exit 0
+          git commit -m "floodwatcher: data $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
