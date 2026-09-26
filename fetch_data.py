@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Floodwatcher data fetcher: pulls public flood data for Greater Bangkok,
-runs a rule-based risk assessment and writes floodwatcher/data/latest.json.
+assesses risk per district (เขต/อำเภอ) and per canal (คลอง), and writes
+data/latest.json.
 
 Stdlib only. Run every 15 min (see .github/workflows/floodwatcher.yml).
 Every source is optional: a failure is recorded in `sources` and the
@@ -19,57 +20,39 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
+from news_filter import classify, strip_source
+from places import districts_from_places
+
 TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(TZ)
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "latest.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "data", "latest.json")
+DISTRICTS = os.path.join(HERE, "data", "districts.geojson")
 UA = "Floodwatcher/1.0 (+https://github.com/icyice1998/Flood)"
 
 # Greater Bangkok bounding box: lat_min, lat_max, lon_min, lon_max
 BBOX = (13.45, 14.20, 100.20, 100.95)
 STALE_HOURS = 3
+NEARBY_KM = 4.0      # fallback radius when a district has no gauge of its own
+RISE_M = 0.10        # canal rise between two runs that counts as "rising"
+NEWS_MAX_AGE_H = 12
 
 THAIWATER = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/"
 
-# Assessment zones: (id, Thai name, English name, lat, lon, keywords for news matching)
-ZONES = [
-    ("bkk-inner", "กรุงเทพชั้นใน", "Inner Bangkok", 13.745, 100.515,
-     ["พระนคร", "ปทุมวัน", "บางรัก", "สาทร", "ราชเทวี", "ดินแดง", "พญาไท", "Sukhumvit", "สุขุมวิท", "Silom", "สีลม"]),
-    ("bkk-north", "กรุงเทพเหนือ", "North Bangkok", 13.855, 100.580,
-     ["จตุจักร", "หลักสี่", "ดอนเมือง", "บางเขน", "สายไหม", "ลาดพร้าว", "Chatuchak", "Don Mueang"]),
-    ("bkk-east", "กรุงเทพตะวันออก", "East Bangkok", 13.800, 100.740,
-     ["มีนบุรี", "หนองจอก", "ลาดกระบัง", "คลองสามวา", "คันนายาว", "บึงกุ่ม", "Lat Krabang", "Min Buri"]),
-    ("bkk-southeast", "กรุงเทพตะวันออกเฉียงใต้", "Southeast Bangkok", 13.690, 100.630,
-     ["บางนา", "พระโขนง", "ประเวศ", "สวนหลวง", "วัฒนา", "คลองเตย", "Bang Na", "On Nut", "อ่อนนุช"]),
-    ("bkk-thonburi", "ฝั่งธนบุรี", "Thonburi", 13.720, 100.470,
-     ["ธนบุรี", "บางกอกน้อย", "บางกอกใหญ่", "คลองสาน", "ภาษีเจริญ", "ตลิ่งชัน", "บางพลัด", "Thonburi"]),
-    ("bkk-southwest", "กรุงเทพตะวันตกเฉียงใต้", "Southwest Bangkok", 13.650, 100.420,
-     ["บางขุนเทียน", "บางบอน", "จอมทอง", "ราษฎร์บูรณะ", "ทุ่งครุ", "หนองแขม", "บางแค", "Bang Khun Thian"]),
-    ("nonthaburi", "นนทบุรี", "Nonthaburi", 13.860, 100.510,
-     ["นนทบุรี", "ปากเกร็ด", "บางบัวทอง", "บางใหญ่", "Nonthaburi"]),
-    ("pathum-thani", "ปทุมธานี", "Pathum Thani", 14.020, 100.600,
-     ["ปทุมธานี", "รังสิต", "ธัญบุรี", "ลำลูกกา", "คลองหลวง", "Pathum Thani", "Rangsit"]),
-    ("samut-prakan", "สมุทรปราการ", "Samut Prakan", 13.600, 100.620,
-     ["สมุทรปราการ", "บางพลี", "พระประแดง", "บางบ่อ", "Samut Prakan", "Bang Phli"]),
-    ("samut-sakhon", "สมุทรสาคร", "Samut Sakhon", 13.550, 100.280,
-     ["สมุทรสาคร", "มหาชัย", "กระทุ่มแบน", "Samut Sakhon"]),
-]
-ZONE_RADIUS_KM = 9.0
-
 NEWS_FEEDS = [
     ("news-google-th", "Google News (TH)",
-     "https://news.google.com/rss/search?q=" + urllib.parse.quote("น้ำท่วม OR ฝนตกหนัก OR น้ำรอระบาย กรุงเทพ when:1d")
+     "https://news.google.com/rss/search?q=" + urllib.parse.quote(
+         "(น้ำท่วม OR ท่วมขัง OR น้ำรอระบาย OR ระดับน้ำ OR ล้นตลิ่ง) (กรุงเทพ OR กทม OR นนทบุรี OR ปทุมธานี OR สมุทรปราการ) when:1d")
      + "&hl=th&gl=TH&ceid=TH:th"),
     ("news-google-en", "Google News (EN)",
-     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok flood OR flooding OR heavy rain when:1d")
+     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok (flood OR flooding OR \"water level\") when:1d")
      + "&hl=en-TH&gl=TH&ceid=TH:en"),
 ]
 # Social feeds are RSS-only. Add more via FLOODWATCHER_SOCIAL_FEEDS="id|label|url;id|label|url"
 SOCIAL_FEEDS = [
     ("social-reddit-bangkok", "Reddit r/Bangkok",
-     "https://www.reddit.com/r/Bangkok/search.rss?q=flood+OR+flooding+OR+rain&restrict_sr=1&sort=new&t=day"),
+     "https://www.reddit.com/r/Bangkok/search.rss?q=flood+OR+flooding+OR+flooded&restrict_sr=1&sort=new&t=day"),
 ]
-FLOOD_WORDS = re.compile(r"น้ำท่วม|ท่วมขัง|น้ำรอระบาย|ฝนตกหนัก|ระดับน้ำ|ล้นตลิ่ง|flood|inundat|heavy rain|waterlog", re.I)
-NEWS_MAX_AGE_H = 24
 
 sources = {}
 
@@ -94,11 +77,11 @@ def http_get(url, timeout=60, retries=2):
     raise last
 
 
-def record(source_id, label, url, ok, count=0, latest=None, error=None, stale=0, kind="measured"):
+def record(source_id, label, url, ok, count=0, latest=None, error=None, stale=0, kind="measured", extra=None):
     sources[source_id] = {
         "id": source_id, "label": label, "url": url, "kind": kind, "ok": ok,
         "count": count, "latest": latest, "stale_records": stale, "error": error,
-        "fetched_at": NOW.isoformat(timespec="seconds"),
+        "fetched_at": NOW.isoformat(timespec="seconds"), **(extra or {}),
     }
 
 
@@ -136,14 +119,114 @@ def iso(ts):
     return ts.isoformat(timespec="minutes") if ts else None
 
 
+def th(d, key):
+    return ((d or {}).get(key) or {}).get("th")
+
+
+# ---------------------------------------------------------------- districts
+
+def load_districts():
+    with open(DISTRICTS, encoding="utf-8") as f:
+        gj = json.load(f)
+    out = []
+    for ft in gj["features"]:
+        p = ft["properties"]
+        g = ft["geometry"]
+        polys = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
+        out.append({**p, "polys": polys})
+    return out
+
+
+def point_in_ring(lon, lat, ring):
+    inside = False
+    j = len(ring) - 1
+    for i in range(len(ring)):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def district_of(districts, province, amphoe, lat, lon):
+    """Match by ThaiWater's own geocode first, then by polygon."""
+    for d in districts:
+        if d["name"] == amphoe and d["province"] == province:
+            return d["id"]
+    for d in districts:
+        for poly in d["polys"]:
+            if point_in_ring(lon, lat, poly[0]) and not any(point_in_ring(lon, lat, h) for h in poly[1:]):
+                return d["id"]
+    return None
+
+
+# ---------------------------------------------------------------- canals
+
+CANAL_ALIASES = {"เปรมฯ": "เปรมประชากร", "ประเวศฯ": "ประเวศบุรีรมย์", "มหาสวัสดิ": "มหาสวัสดิ์"}
+RIVER_STATIONS = {  # ThaiWater main stations that sit on a river, not a canal
+    "กรมชลประทานสามเสน": "แม่น้ำเจ้าพระยา", "สะพานกรุงเทพ": "แม่น้ำเจ้าพระยา",
+    "สะพานนวลฉวี": "แม่น้ำเจ้าพระยา", "เมืองสมุทรสาคร": "แม่น้ำท่าจีน", "ร.ร.บ้านสามพราน": "แม่น้ำท่าจีน",
+}
+
+
+def canal_key(name):
+    """'ค.ลาดพร้าว ถ.xx' / 'ปตร.คลองแสนแสบ' / 'คลองลาดพร้าว วัดบางบัว' -> 'คลองลาดพร้าว'."""
+    if not name:
+        return None
+    if name in RIVER_STATIONS:
+        return RIVER_STATIONS[name]
+    if name.startswith("แม่น้ำ"):
+        return name.split()[0]
+    n = re.sub(r"^(?:ปตร\.|ส\.|สถานีสูบน้ำ|ประตูระบายน้ำ)\s*", "", name.strip())
+    n = re.sub(r"^ค\.\s*", "คลอง", n)
+    if not n.startswith("คลอง"):
+        return None
+    m = re.match(r"(?:คลอง|ค\.)?([^\s\-(]+)(?:\s+(\d+)\b)?", n[4:].strip())
+    if not m:
+        return None
+    base = CANAL_ALIASES.get(m.group(1), m.group(1))
+    # 'คลองหลอด 2' in Bang Na is a different canal from คลองหลอด in Phra Nakhon
+    return "คลอง" + base + (" " + m.group(2) if m.group(2) else "")
+
+
+def link_structures(gauges):
+    """Pump stations/gates named after a canal ('ส.สามเสน', 'ปตร.พระยาสุเรนทร์') join that canal."""
+    known = {g["canal"] for g in gauges if g.get("canal")}
+    for g in gauges:
+        if g.get("canal") or not g.get("name"):
+            continue
+        n = re.sub(r"^(?:ปตร\.|ส\.)\s*", "", g["name"])
+        first = re.split(r"[\s\-(]", n, maxsplit=1)[0]
+        if "คลอง" + first in known:
+            g["canal"] = "คลอง" + first
+
+
+def canal_status(value, warn, crit, bank):
+    if value is None:
+        return "unknown"
+    if bank is not None and value >= bank:
+        return "overbank"
+    if crit is not None and value >= crit:
+        return "critical"
+    if warn is not None and value >= warn:
+        return "warning"
+    return "normal"
+
+
+STATUS_ORDER = {"overbank": 3, "critical": 2, "warning": 1, "normal": 0, "unknown": -1}
+STATUS_TH = {"overbank": "ล้นตลิ่ง", "critical": "เกินระดับวิกฤต", "warning": "เกินระดับเฝ้าระวัง",
+             "normal": "ปกติ", "unknown": "ไม่มีข้อมูล"}
+
+
 # ---------------------------------------------------------------- sources
 
-def fetch_waterlevel():
+def fetch_waterlevel(districts):
     sid, url = "thaiwater-waterlevel", THAIWATER + "waterlevel_load"
     try:
         data = json.loads(http_get(url))["waterlevel_data"]["data"]
     except Exception as e:  # noqa: BLE001
-        record(sid, "ThaiWater water level", url, False, error=str(e)[:200])
+        record(sid, "ThaiWater แม่น้ำ/คลองหลัก", url, False, error=str(e)[:200])
         return []
     out = []
     for d in data:
@@ -162,35 +245,101 @@ def fetch_waterlevel():
         if pct is not None and (pct < 0 or pct > 300):
             flags.append("out_of_range")
         geo = d.get("geocode") or {}
+        name = th(st, "tele_station_name")
+        prov, amphoe = th(geo, "province_name"), th(geo, "amphoe_name")
+        status = ("overbank" if pct >= 100 else "critical" if pct >= 90 else "warning" if pct >= 80 else "normal") \
+            if pct is not None else "unknown"
         out.append({
             "id": st.get("tele_station_oldcode") or str(st.get("id")),
-            "name": (st.get("tele_station_name") or {}).get("th"),
-            "name_en": (st.get("tele_station_name") or {}).get("en"),
-            "lat": lat, "lon": lon,
-            "province": (geo.get("province_name") or {}).get("th"),
-            "amphoe": (geo.get("amphoe_name") or {}).get("th"),
+            "name": name, "name_en": (st.get("tele_station_name") or {}).get("en"),
+            "lat": lat, "lon": lon, "province": prov, "amphoe": amphoe,
+            "district": district_of(districts, prov, amphoe, lat, lon),
+            "canal": canal_key(name),
             "agency": ((d.get("agency") or {}).get("agency_shortname") or {}).get("en"),
-            "waterlevel_msl": wl,
+            "value": wl, "unit": "ม.รทก.",
             "rise_m": round(wl - prev, 3) if wl is not None and prev is not None else None,
-            "bank_percent": pct,
-            "to_bank_m": fnum(d.get("diff_wl_bank")),
-            "situation_level": d.get("situation_level"),
-            "time": iso(ts),
-            "flags": flags,
-            "source_id": sid,
+            "bank_percent": pct, "to_bank_m": fnum(d.get("diff_wl_bank")),
+            "status": status,
+            "time": iso(ts), "flags": flags, "source_id": sid,
         })
     times = [s["time"] for s in out if s["time"]]
-    record(sid, "ThaiWater water level", url, True, len(out), max(times) if times else None,
+    record(sid, "ThaiWater แม่น้ำ/คลองหลัก", url, True, len(out), max(times) if times else None,
            stale=sum("stale" in s["flags"] for s in out))
     return out
 
 
-def fetch_rain():
+def fetch_canals(districts, previous):
+    sid, url = "bma-canal", THAIWATER + "canal_waterlevel"
+    try:
+        data = json.loads(http_get(url))["data"]
+    except Exception as e:  # noqa: BLE001
+        record(sid, "สำนักการระบายน้ำ กทม. ระดับน้ำคลอง (ผ่าน ThaiWater)", url, False, error=str(e)[:200])
+        return []
+    out = []
+    for d in data:
+        st = d.get("station") or {}
+        lat, lon = fnum(st.get("canal_lat")), fnum(st.get("canal_long"))
+        if not in_bbox(lat, lon):
+            continue
+        ts = local_ts(d.get("canal_datetime"))
+        v, outside = fnum(d.get("canal_value")), fnum(d.get("canal_out"))
+        bank, warn, crit = fnum(st.get("bank")), fnum(st.get("warning_level")), fnum(st.get("critical_level"))
+        raw = {"bank": bank, "critical": crit, "warning": warn}
+        sid_ = st.get("canal_oldcode") or str(st.get("id"))
+        flags = []
+        # Some BMA gauges carry placeholder thresholds (bank 0 / critical 0 / warning -0.2)
+        # or contradictory ones (bank below critical). Drop those rather than trust them.
+        if bank is not None and bank <= 0:
+            bank = None
+        if crit is not None and warn is not None and crit <= 0 and warn < 0:
+            crit = warn = None
+        if bank is not None and crit is not None and bank < crit:
+            bank = None
+        if raw != {"bank": bank, "critical": crit, "warning": warn}:
+            flags.append("threshold_suspect")
+        if v is None:
+            flags.append("missing_value")
+        if ts is None or age_h(ts) > STALE_HOURS:
+            flags.append("stale")
+        if v is not None and (v < -4 or v > 5 or (bank is not None and v > bank + 2)):
+            flags.append("out_of_range")
+        if bank is None and crit is None and warn is None:
+            flags.append("no_threshold")
+        # Rise since the previous run (only if that reading is newer than 90 min ago)
+        rise = None
+        p = previous.get(sid_)
+        if p and v is not None and p.get("value") is not None and p.get("time") and ts:
+            pt = datetime.fromisoformat(p["time"])
+            if pt < ts and (ts - pt) <= timedelta(minutes=90):
+                rise = round(v - p["value"], 2)
+        geo = d.get("geocode") or {}
+        name = th(st, "canal_name")
+        prov, amphoe = th(geo, "province_name"), th(geo, "amphoe_name")
+        kind = "pump" if name and name.startswith("ส.") else "gate" if name and name.startswith("ปตร") else "canal"
+        out.append({
+            "id": sid_, "name": name, "lat": lat, "lon": lon, "province": prov, "amphoe": amphoe,
+            "district": district_of(districts, prov, amphoe, lat, lon),
+            "canal": canal_key(name), "kind": kind,
+            "value": v, "outside": outside if kind != "canal" and outside else None, "unit": "ม.รทก.",
+            "bank": bank, "warning": warn, "critical": crit,
+            "to_bank_m": round(bank - v, 2) if bank is not None and v is not None else None,
+            "thresholds_raw": raw if "threshold_suspect" in flags else None,
+            "status": "unknown" if {"stale", "out_of_range", "missing_value", "no_threshold"} & set(flags)
+                      else canal_status(v, warn, crit, bank),
+            "rise_m": rise, "time": iso(ts), "flags": flags, "source_id": sid,
+        })
+    times = [s["time"] for s in out if s["time"]]
+    record(sid, "สำนักการระบายน้ำ กทม. ระดับน้ำคลอง (ผ่าน ThaiWater)", url, True, len(out),
+           max(times) if times else None, stale=sum("stale" in s["flags"] for s in out))
+    return out
+
+
+def fetch_rain(districts):
     sid, url = "thaiwater-rain", THAIWATER + "rain_24h"
     try:
         data = json.loads(http_get(url, timeout=90))["data"]
     except Exception as e:  # noqa: BLE001
-        record(sid, "ThaiWater rain gauges", url, False, error=str(e)[:200])
+        record(sid, "ThaiWater สถานีวัดฝน", url, False, error=str(e)[:200])
         return []
     out = []
     for d in data:
@@ -207,47 +356,42 @@ def fetch_rain():
         if (r1 is not None and (r1 < 0 or r1 > 150)) or (r24 is not None and (r24 < 0 or r24 > 600)):
             flags.append("out_of_range")
         geo = d.get("geocode") or {}
+        prov, amphoe = th(geo, "province_name"), th(geo, "amphoe_name")
         out.append({
             "id": st.get("tele_station_oldcode") or str(st.get("id")),
-            "name": (st.get("tele_station_name") or {}).get("th"),
-            "lat": lat, "lon": lon,
-            "province": (geo.get("province_name") or {}).get("th"),
-            "amphoe": (geo.get("amphoe_name") or {}).get("th"),
+            "name": th(st, "tele_station_name"), "lat": lat, "lon": lon,
+            "province": prov, "amphoe": amphoe,
+            "district": district_of(districts, prov, amphoe, lat, lon),
             "agency": ((d.get("agency") or {}).get("agency_shortname") or {}).get("en"),
             "rain_1h": r1, "rain_24h": r24,
-            "time": iso(ts),
-            "flags": flags,
-            "source_id": sid,
+            "time": iso(ts), "flags": flags, "source_id": sid,
         })
     times = [s["time"] for s in out if s["time"]]
-    record(sid, "ThaiWater rain gauges", url, True, len(out), max(times) if times else None,
+    record(sid, "ThaiWater สถานีวัดฝน", url, True, len(out), max(times) if times else None,
            stale=sum("stale" in s["flags"] for s in out))
     return out
 
 
-def fetch_forecast():
+def fetch_forecast(districts):
     sid = "open-meteo-forecast"
-    lats = ",".join(str(z[3]) for z in ZONES)
-    lons = ",".join(str(z[4]) for z in ZONES)
+    lats = ",".join(str(d["lat"]) for d in districts)
+    lons = ",".join(str(d["lon"]) for d in districts)
     url = ("https://api.open-meteo.com/v1/forecast?latitude=" + lats + "&longitude=" + lons
            + "&hourly=precipitation,precipitation_probability&forecast_hours=12&timezone=Asia%2FBangkok")
+    label = "Open-Meteo พยากรณ์ฝนรายชั่วโมง"
     try:
         data = json.loads(http_get(url, timeout=90))
         if isinstance(data, dict):
             data = [data]
     except Exception as e:  # noqa: BLE001
-        record(sid, "Open-Meteo precipitation forecast", url, False, error=str(e)[:200], kind="forecast")
+        record(sid, label, url[:120] + "…", False, error=str(e)[:200], kind="forecast")
         return {}
     out = {}
-    for z, d in zip(ZONES, data):
-        h = d.get("hourly") or {}
-        out[z[0]] = [
-            {"time": t, "mm": p, "prob": pr}
-            for t, p, pr in zip(h.get("time", []), h.get("precipitation", []),
-                                h.get("precipitation_probability", []))
-        ]
-    record(sid, "Open-Meteo precipitation forecast", url, True, len(out),
-           NOW.isoformat(timespec="minutes"), kind="forecast")
+    for d, fc in zip(districts, data):
+        h = fc.get("hourly") or {}
+        out[d["id"]] = [{"time": t, "mm": p, "prob": pr} for t, p, pr in
+                        zip(h.get("time", []), h.get("precipitation", []), h.get("precipitation_probability", []))]
+    record(sid, label, url[:120] + "…", True, len(out), NOW.isoformat(timespec="minutes"), kind="forecast")
     return out
 
 
@@ -265,20 +409,31 @@ def fetch_river():
         if isinstance(data, dict):
             data = [data]
     except Exception as e:  # noqa: BLE001
-        record(sid, "GloFAS river discharge (Open-Meteo)", url, False, error=str(e)[:200], kind="forecast")
+        record(sid, "GloFAS อัตราการไหลแม่น้ำ (Open-Meteo)", url, False, error=str(e)[:200], kind="forecast")
         return []
     out = []
     for p, d in zip(pts, data):
         dl = d.get("daily") or {}
         out.append({"id": p[0], "name": p[1], "lat": p[2], "lon": p[3],
-                    "days": dl.get("time", []), "discharge": dl.get("river_discharge", []),
-                    "source_id": sid})
-    record(sid, "GloFAS river discharge (Open-Meteo)", url, True, len(out),
+                    "days": dl.get("time", []), "discharge": dl.get("river_discharge", []), "source_id": sid})
+    record(sid, "GloFAS อัตราการไหลแม่น้ำ (Open-Meteo)", url, True, len(out),
            NOW.isoformat(timespec="minutes"), kind="forecast")
     return out
 
 
-def parse_rss(sid, label, url, kind):
+def place_matchers(districts, canal_names):
+    """Regexes that tie a headline to districts and canals."""
+    dist = []
+    for d in districts:
+        # 'พระนคร' must not match 'พระนครศรีอยุธยา'
+        th_rx = re.escape(d["name"]) + (r"(?!ศรีอยุธยา)" if d["name"] == "พระนคร" else "")
+        en_rx = r"\b" + re.escape(d["name_en"]) + r"\b" if d.get("name_en") else None
+        dist.append((d["id"], re.compile(th_rx + (("|" + en_rx) if en_rx else ""), re.I)))
+    canals = [(c, re.compile(re.escape(c) + "|" + re.escape(c.replace("คลอง", "ค.", 1)))) for c in canal_names if c]
+    return dist, canals
+
+
+def parse_rss(sid, label, url, kind, dist_rx, canal_rx, rejected):
     try:
         root = ET.fromstring(http_get(url, timeout=30))
     except Exception as e:  # noqa: BLE001
@@ -286,7 +441,7 @@ def parse_rss(sid, label, url, kind):
         return []
     atom = "{http://www.w3.org/2005/Atom}"
     items = list(root.iter("item")) or list(root.iter(atom + "entry"))
-    out = []
+    out, dropped = [], 0
     for it in items:
         title = (it.findtext("title") or it.findtext(atom + "title") or "").strip()
         link = it.findtext("link") or ""
@@ -303,13 +458,26 @@ def parse_rss(sid, label, url, kind):
                     ts = datetime.fromisoformat(pub.replace("Z", "+00:00"))
                 except ValueError:
                     ts = None
-        if ts is None or age_h(ts) > NEWS_MAX_AGE_H or not FLOOD_WORDS.search(title):
+        if ts is None or age_h(ts) > NEWS_MAX_AGE_H:
             continue
+        keep, cats, reason = classify(title)
+        if not keep:
+            dropped += 1
+            rejected[reason] = rejected.get(reason, 0) + 1
+            continue
+        clean = strip_source(title)
+        canals = [c for c, rx in canal_rx if rx.search(clean)]
+        # Remove canal names first so 'คลองลาดพร้าว' does not tag district ลาดพร้าว
+        rest = clean
+        for c, rx in canal_rx:
+            rest = rx.sub(" ", rest)
+        districts = [d for d, rx in dist_rx if rx.search(rest)]
+        via = {d: place for d, place in districts_from_places(rest).items() if d not in districts}
         out.append({"title": title, "link": link.strip(), "source": it.findtext("source") or label,
                     "time": iso(ts.astimezone(TZ)), "kind": kind, "source_id": sid,
-                    "zones": [z[0] for z in ZONES if any(k.lower() in title.lower() for k in z[5])]})
+                    "categories": cats, "districts": districts + list(via), "via": via, "canals": canals})
     times = [n["time"] for n in out]
-    record(sid, label, url, True, len(out), max(times) if times else None, kind=kind)
+    record(sid, label, url, True, len(out), max(times) if times else None, kind=kind, extra={"filtered_out": dropped})
     return out
 
 
@@ -327,8 +495,7 @@ def fetch_gdacs():
             continue
         out.append({"title": it.findtext("title"), "link": it.findtext("link"),
                     "level": it.findtext(g + "alertlevel"), "type": it.findtext(g + "eventtype"),
-                    "from": it.findtext(g + "fromdate"), "to": it.findtext(g + "todate"),
-                    "source_id": sid})
+                    "from": it.findtext(g + "fromdate"), "to": it.findtext(g + "todate"), "source_id": sid})
     record(sid, "GDACS disaster alerts", url, True, len(out), kind="official")
     return out
 
@@ -369,130 +536,190 @@ def level_for(score):
     return lv
 
 
-def assess(zone, water, rain, forecast, news):
-    zid, name_th, name_en, zlat, zlon, _ = zone
+def usable(x):
+    return not {"stale", "out_of_range", "missing_value"} & set(x["flags"])
+
+
+def local_or_near(items, d):
+    own = [x for x in items if x.get("district") == d["id"] and usable(x)]
+    if own:
+        return own, False
+    near = [x for x in items if usable(x) and km(d["lat"], d["lon"], x["lat"], x["lon"]) <= NEARBY_KM]
+    return near, bool(near)
+
+
+def assess(d, rain, gauges, forecast, news):
     ev = {"measured": [], "forecast": [], "reported": [], "confirmed": []}
     score = 0
-    fresh_kinds = set()
+    fresh = set()
 
-    near_rain = [r for r in rain if km(zlat, zlon, r["lat"], r["lon"]) <= ZONE_RADIUS_KM
-                 and "out_of_range" not in r["flags"]]
-    usable = [r for r in near_rain if "stale" not in r["flags"]]
-    if usable:
-        fresh_kinds.add("rain")
-        top24 = max(usable, key=lambda r: r["rain_24h"] or 0)
-        top1 = max(usable, key=lambda r: r["rain_1h"] or 0)
+    rs, near = local_or_near(rain, d)
+    if rs:
+        fresh.add("rain")
+        top24 = max(rs, key=lambda r: r["rain_24h"] or 0)
+        top1 = max(rs, key=lambda r: r["rain_1h"] or 0)
         r24, r1 = top24["rain_24h"] or 0, top1["rain_1h"] or 0
         # TMD classes: heavy 35.1-90 mm/24h, very heavy >90 mm/24h
-        pts24 = 2 if r24 > 90 else 1 if r24 > 35 else 0
+        p24 = 2 if r24 > 90 else 1 if r24 > 35 else 0
         # BMA drains are designed for ~60 mm/h; ponding often starts well below that
-        pts1 = 2 if r1 >= 40 else 1 if r1 >= 20 else 0
-        score += pts24 + pts1
-        ev["measured"].append({
-            "text": f"ฝนสะสม 24 ชม. สูงสุด {r24:.1f} มม. ({top24['name']})",
-            "text_en": f"Max 24 h rain {r24:.1f} mm at {top24['name']}",
-            "points": pts24, "time": top24["time"], "source_id": top24["source_id"], "station": top24["id"]})
-        ev["measured"].append({
-            "text": f"ฝน 1 ชม. ล่าสุดสูงสุด {r1:.1f} มม. ({top1['name']})",
-            "text_en": f"Max last-hour rain {r1:.1f} mm at {top1['name']}",
-            "points": pts1, "time": top1["time"], "source_id": top1["source_id"], "station": top1["id"]})
+        p1 = 2 if r1 >= 40 else 1 if r1 >= 20 else 0
+        score += p24 + p1
+        tag = " (สถานีใกล้เคียง)" if near else ""
+        ev["measured"].append({"text": f"ฝนสะสม 24 ชม. สูงสุด {r24:.1f} มม. ที่ {top24['name']}{tag}",
+                               "points": p24, "time": top24["time"], "source_id": top24["source_id"], "station": top24["id"]})
+        ev["measured"].append({"text": f"ฝน 1 ชม. ล่าสุดสูงสุด {r1:.1f} มม. ที่ {top1['name']}{tag}",
+                               "points": p1, "time": top1["time"], "source_id": top1["source_id"], "station": top1["id"]})
 
-    near_wl = [w for w in water if km(zlat, zlon, w["lat"], w["lon"]) <= ZONE_RADIUS_KM
-               and w["bank_percent"] is not None and not {"stale", "out_of_range"} & set(w["flags"])]
-    if near_wl:
-        fresh_kinds.add("water")
-        top = max(near_wl, key=lambda w: w["bank_percent"])
-        pct = top["bank_percent"]
-        over = sum(1 for w in near_wl if w["bank_percent"] >= 100)
-        # One overtopped gauge can be local (tidal gate); two or more is a pattern
-        pts = 3 if over >= 2 else 2 if over == 1 or pct >= 90 else 1 if pct >= 80 else 0
-        rising = [w for w in near_wl if (w["rise_m"] or 0) >= 0.05]
-        score += pts + (1 if rising else 0)
+    gs = [g for g in gauges if g.get("district") == d["id"] and usable(g) and g["status"] != "unknown"]
+    if gs:
+        fresh.add("water")
+        worst = max(gs, key=lambda g: (STATUS_ORDER[g["status"]], -(g["to_bank_m"] if g.get("to_bank_m") is not None else 9)))
+        n_over = sum(g["status"] == "overbank" for g in gs)
+        n_crit = sum(g["status"] in ("overbank", "critical") for g in gs)
+        n_warn = sum(g["status"] != "normal" for g in gs)
+        pts = {"overbank": 3, "critical": 2, "warning": 1}.get(worst["status"], 0)
+        if n_over >= 2 or (n_crit >= 3 and pts < 3) or (n_crit >= 2 and pts < 2):
+            pts += 1  # several gauges beyond critical/bank is a pattern, not a single sensor
+        score += pts
+        if worst.get("bank_percent") is not None:
+            detail = f"{worst['bank_percent']:.0f}% ของตลิ่ง"
+        else:
+            detail = f"{worst['value']:.2f} ม. (ตลิ่ง {worst['bank'] if worst['bank'] is not None else '–'} ม.)"
         ev["measured"].append({
-            "text": f"ระดับน้ำ {top['name']} {pct:.0f}% ของตลิ่ง",
-            "text_en": f"Water level at {top['name_en'] or top['name']}: {pct:.0f}% of bank",
-            "points": pts, "time": top["time"], "source_id": top["source_id"], "station": top["id"]})
+            "text": f"ระดับน้ำ: {n_over} จุดล้นตลิ่ง, {n_crit} จุดเกินวิกฤต, {n_warn}/{len(gs)} จุดเกินเฝ้าระวัง · "
+                    f"หนักสุด {worst['name']} {detail} ({STATUS_TH[worst['status']]})",
+            "points": pts, "time": worst["time"], "source_id": worst["source_id"], "station": worst["id"]})
+        rising = [g for g in gs if (g.get("rise_m") or 0) >= RISE_M]
         if rising:
-            r = max(rising, key=lambda w: w["rise_m"])
-            ev["measured"].append({
-                "text": f"น้ำกำลังขึ้น {r['name']} +{r['rise_m']:.2f} ม. จากค่าก่อนหน้า",
-                "text_en": f"Rising at {r['name_en'] or r['name']}: +{r['rise_m']:.2f} m since last reading",
-                "points": 1, "time": r["time"], "source_id": r["source_id"], "station": r["id"]})
+            r = max(rising, key=lambda g: g["rise_m"])
+            score += 1
+            ev["measured"].append({"text": f"น้ำกำลังขึ้น {len(rising)} จุด · มากสุด {r['name']} +{r['rise_m']:.2f} ม.",
+                                   "points": 1, "time": r["time"], "source_id": r["source_id"], "station": r["id"]})
 
-    peak = None
-    fc = forecast.get(zid) or []
+    window = None
+    fc = forecast.get(d["id"]) or []
     if fc:
-        fresh_kinds.add("forecast")
+        fresh.add("forecast")
         next3 = sum((h["mm"] or 0) for h in fc[:3])
         next12 = sum((h["mm"] or 0) for h in fc)
         pts = 2 if next3 >= 30 else 1 if next3 >= 10 else 0
         score += pts
         wet = [h for h in fc if (h["mm"] or 0) >= 1]
         if wet:
-            peak_h = max(wet, key=lambda h: h["mm"])
-            peak = {"start": wet[0]["time"], "peak": peak_h["time"], "peak_mm": peak_h["mm"]}
-        ev["forecast"].append({
-            "text": f"คาดการณ์ฝน 3 ชม. ข้างหน้า {next3:.1f} มม. (12 ชม. {next12:.1f} มม.)",
-            "text_en": f"Forecast rain next 3 h {next3:.1f} mm (12 h {next12:.1f} mm)",
-            "points": pts, "time": fc[0]["time"], "source_id": "open-meteo-forecast"})
+            peak = max(wet, key=lambda h: h["mm"])
+            window = {"start": wet[0]["time"], "peak": peak["time"], "peak_mm": peak["mm"]}
+        ev["forecast"].append({"text": f"คาดการณ์ฝน 3 ชม. ข้างหน้า {next3:.1f} มม. (12 ชม. {next12:.1f} มม.)",
+                               "points": pts, "time": fc[0]["time"], "source_id": "open-meteo-forecast"})
 
-    zn = [n for n in news if zid in n["zones"]]
-    if zn:
+    dn = [n for n in news if d["id"] in n["districts"]]
+    if dn:
         score += 1
-        for n in zn[:3]:
-            ev["reported"].append({"text": n["title"], "link": n["link"], "points": 0,
-                                   "time": n["time"], "source_id": n["source_id"]})
-        ev["reported"][0]["points"] = 1
+        for i, n in enumerate(dn[:3]):
+            via = n.get("via", {}).get(d["id"])
+            ev["reported"].append({"text": strip_source(n["title"]) + (f" (จับคู่จาก: {via})" if via else ""),
+                                   "link": n["link"], "points": 1 if i == 0 else 0,
+                                   "time": n["time"], "source_id": n["source_id"], "categories": n["categories"]})
 
     lv = level_for(score)
-    # Confidence rises with independent, fresh evidence types that agree
-    agree = sum(1 for k in ("rain", "water", "forecast") if k in fresh_kinds)
-    confidence = "high" if agree >= 3 and zn else "medium" if agree >= 2 else "low"
+    agree = len({"rain", "water", "forecast"} & fresh)
+    confidence = "high" if agree >= 3 and dn else "medium" if agree >= 2 else "low"
+    notes = []
+    if "water" not in fresh:
+        notes.append("ไม่มีสถานีวัดระดับน้ำที่ใช้งานได้ในเขตนี้")
+    if not ev["confirmed"]:
+        notes.append("ยังไม่มีการยืนยันผลกระทบด้วย CCTV/ดาวเทียม")
     return {
-        "id": zid, "name": name_th, "name_en": name_en, "lat": zlat, "lon": zlon,
-        "radius_km": ZONE_RADIUS_KM, "score": score, "level": lv[1], "level_th": lv[2], "level_en": lv[3],
-        "confidence": confidence, "window": peak, "evidence": ev,
-        "advice": ADVICE[lv[1]][0], "advice_en": ADVICE[lv[1]][1],
-        "note": "ยังไม่มีการยืนยันผลกระทบด้วย CCTV/ดาวเทียม" if not ev["confirmed"] else None,
+        "id": d["id"], "name": d["name"], "name_en": d["name_en"], "province": d["province"],
+        "lat": d["lat"], "lon": d["lon"], "score": score,
+        "level": lv[1], "level_th": lv[2], "level_en": lv[3], "confidence": confidence, "window": window,
+        "gauges": len(gs), "evidence": ev, "advice": ADVICE[lv[1]][0], "advice_en": ADVICE[lv[1]][1], "notes": notes,
     }
 
 
+def summarize_canals(gauges, news, district_names):
+    groups = {}
+    for g in gauges:
+        if not g.get("canal"):
+            continue
+        groups.setdefault(g["canal"], []).append(g)
+    out = []
+    for name, gs in groups.items():
+        ok = [g for g in gs if usable(g) and g["status"] != "unknown"]
+        worst = max(ok, key=lambda g: (STATUS_ORDER[g["status"]], -(g["to_bank_m"] if g.get("to_bank_m") is not None else 9))) if ok else None
+        rising = [g for g in ok if (g.get("rise_m") or 0) >= RISE_M]
+        out.append({
+            "name": name,
+            "status": worst["status"] if worst else "unknown",
+            "gauges": len(gs), "reporting": len(ok),
+            "overbank": sum(g["status"] == "overbank" for g in ok),
+            "critical": sum(g["status"] in ("overbank", "critical") for g in ok),
+            "warning": sum(g["status"] != "normal" for g in ok),
+            "rising": len(rising),
+            "worst": {k: worst.get(k) for k in ("id", "name", "value", "bank", "to_bank_m", "bank_percent", "time", "status")} if worst else None,
+            "districts": sorted({district_names.get(g["district"], g["amphoe"]) for g in gs if g.get("district") or g.get("amphoe")}),
+            "news": sum(1 for n in news if name in n["canals"]),
+        })
+    out.sort(key=lambda c: (-STATUS_ORDER[c["status"]], -c["critical"], -c["warning"], c["name"]))
+    return out
+
+
+def load_previous():
+    try:
+        with open(OUT, encoding="utf-8") as f:
+            prev = json.load(f)
+        return {g["id"]: g for g in prev.get("stations", {}).get("canal", [])}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
 def main():
-    water = fetch_waterlevel()
-    rain = fetch_rain()
-    forecast = fetch_forecast()
+    districts = load_districts()
+    previous = load_previous()
+    rivers = fetch_waterlevel(districts)
+    canals = fetch_canals(districts, previous)
+    rain = fetch_rain(districts)
+    forecast = fetch_forecast(districts)
     river = fetch_river()
+
+    link_structures(canals + rivers)
+    canal_names = sorted({g["canal"] for g in canals + rivers if g.get("canal")}, key=len, reverse=True)
+    dist_rx, canal_rx = place_matchers(districts, canal_names)
+    rejected = {}
     news = []
     for sid, label, url in NEWS_FEEDS:
-        news += parse_rss(sid, label, url, "news")
+        news += parse_rss(sid, label, url, "news", dist_rx, canal_rx, rejected)
     for sid, label, url in social_feeds():
-        news += parse_rss(sid, label, url, "social")
+        news += parse_rss(sid, label, url, "social", dist_rx, canal_rx, rejected)
     seen, deduped = set(), []
     for n in sorted(news, key=lambda n: n["time"], reverse=True):
-        key = re.sub(r"\W+", "", n["title"].split(" - ")[0].lower())
+        key = re.sub(r"\W+", "", strip_source(n["title"]).lower())[:60]
         if key not in seen:
             seen.add(key)
             deduped.append(n)
     gdacs = fetch_gdacs()
 
-    zones = [assess(z, water, rain, forecast, deduped) for z in ZONES]
+    gauges = canals + rivers
+    assessed = [assess(d, rain, gauges, forecast, deduped) for d in districts]
     order = {r[1]: i for i, r in enumerate(LEVELS)}
-    zones.sort(key=lambda z: (-order[z["level"]], -z["score"]))
+    assessed.sort(key=lambda z: (-order[z["level"]], -z["score"], z["name"]))
+    names = {d["id"]: d["name"] for d in districts}
 
     payload = {
+        "version": 2,
         "generated_at": NOW.isoformat(timespec="seconds"),
         "bbox": BBOX,
         "method": {
-            "version": 1,
             "levels": {r[1]: f"score >= {r[0]}" for r in LEVELS},
-            "stale_hours": STALE_HOURS,
-            "zone_radius_km": ZONE_RADIUS_KM,
-            "disclaimer": ("ระบบทดลอง ใช้กฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ"),
+            "stale_hours": STALE_HOURS, "nearby_km": NEARBY_KM, "rise_m": RISE_M,
+            "news_max_age_h": NEWS_MAX_AGE_H,
+            "disclaimer": "ระบบทดลอง ใช้กฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ",
         },
-        "zones": zones,
-        "stations": {"water": water, "rain": rain},
+        "districts": assessed,
+        "canals": summarize_canals(gauges, deduped, names),
+        "stations": {"canal": canals, "river": rivers, "rain": rain},
         "river": river,
-        "news": deduped[:40],
+        "news": deduped[:80],
+        "news_filtered": rejected,
         "official": gdacs,
         "sources": list(sources.values()),
     }
@@ -500,12 +727,12 @@ def main():
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
     ok = sum(s["ok"] for s in sources.values())
-    log(f"wrote {OUT}: {len(zones)} zones, {len(water)} water, {len(rain)} rain, "
-        f"{len(deduped)} news, sources ok {ok}/{len(sources)}")
-    for z in zones:
-        log(f"  {z['level']:8} score={z['score']} conf={z['confidence']:6} {z['name_en']}")
+    counts = {r[1]: sum(z["level"] == r[1] for z in assessed) for r in LEVELS}
+    log(f"wrote {OUT}: {len(assessed)} districts {counts}, {len(payload['canals'])} canals, "
+        f"{len(canals)} canal gauges, {len(rivers)} river gauges, {len(rain)} rain, "
+        f"{len(deduped)} news kept, filtered {rejected}, sources ok {ok}/{len(sources)}")
     # Fail the job only if every core measured source is down
-    if not water and not rain:
+    if not canals and not rivers and not rain:
         sys.exit(1)
 
 
