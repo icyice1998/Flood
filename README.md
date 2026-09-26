@@ -14,55 +14,74 @@ GitHub Actions (cron */15)                     GitHub Pages (static)
 | fetch_data.py (stdlib)    |  commits         | index.html + app.js        |
 |  ThaiWater water level ---+--> data/         |  Leaflet + OpenStreetMap   |
 |  ThaiWater rain gauges    |   latest.json -->|  RainViewer radar tiles    |
-|  Open-Meteo forecast      |                  |  zone alerts + evidence    |
+|  BMA canal gauges         |                  |  district map + alerts     |
 |  GloFAS river discharge   |                  |  news/social, source health|
 |  Google News RSS (TH/EN)  |                  +----------------------------+
 |  Social RSS (Reddit, ...) |
 |  GDACS alerts             |
-|  -> QC -> zone scoring    |
+|  -> QC -> district scoring|
 +---------------------------+
 ```
 
-| Source ID              | Data                                  | Kind      |
-|------------------------|---------------------------------------|-----------|
-| thaiwater-waterlevel   | Canal/river level, % of bank, change  | measured  |
-| thaiwater-rain         | Rain 1 h / 24 h per gauge             | measured  |
-| open-meteo-forecast    | Hourly rain, next 12 h, per zone      | forecast  |
-| open-meteo-glofas      | Chao Phraya discharge, -3 to +7 days  | forecast  |
-| news-google-th / -en   | Flood-keyword headlines, last 24 h    | news      |
-| social-*               | Any RSS feed (see below)              | social    |
-| gdacs                  | Current GDACS events for Thailand     | official  |
-| RainViewer (client)    | Radar mosaic, past 2 h, animated      | measured  |
+| Source ID              | Data                                               | Kind      |
+|------------------------|----------------------------------------------------|-----------|
+| bma-canal              | ~280 BMA canal gauges vs bank/critical/warning     | measured  |
+| thaiwater-waterlevel   | River/main-canal level, % of bank, change          | measured  |
+| thaiwater-rain         | Rain 1 h / 24 h per gauge                          | measured  |
+| open-meteo-forecast    | Hourly rain, next 12 h, per district               | forecast  |
+| open-meteo-glofas      | Chao Phraya discharge, -3 to +7 days               | forecast  |
+| news-google-th / -en   | Filtered headlines, last 12 h                      | news      |
+| social-*               | Any RSS feed (see below)                           | social    |
+| gdacs                  | Current GDACS events for Thailand                  | official  |
+| RainViewer (client)    | Radar mosaic, past 2 h, animated                   | measured  |
 
-## Risk logic
+District boundaries (`data/districts.geojson`, 72 areas: Bangkok's 50 khet plus
+the amphoe of Nonthaburi, Pathum Thani, Samut Prakan and Samut Sakhon) are
+© OpenStreetMap contributors (ODbL), simplified via Nominatim.
 
-Each zone covers a radius of about 9 km. It collects evidence from nearby stations and scores it:
+## Risk logic (per district)
 
-| Evidence                 | Threshold                                   | Points |
-|--------------------------|---------------------------------------------|--------|
-| Rain 24 h (TMD classes)  | >35 / >90 mm                                | 1 / 2  |
-| Rain 1 h                 | >=20 / >=40 mm                              | 1 / 2  |
-| Water level vs bank      | >=80% / >=90% or 1 overtopped / >=2 overtopped | 1 / 2 / 3 |
-| Rising                   | >=5 cm since the previous reading           | 1      |
-| Forecast rain, next 3 h  | >=10 / >=30 mm                              | 1 / 2  |
-| News/social mention      | >=1 in the last 24 h naming the zone        | 1      |
+Each district uses the gauges inside it; rain falls back to gauges within 4 km.
+
+| Evidence                          | Threshold                                        | Points    |
+|-----------------------------------|--------------------------------------------------|-----------|
+| Rain 24 h (TMD classes)           | >35 / >90 mm                                     | 1 / 2     |
+| Rain 1 h                          | >=20 / >=40 mm                                   | 1 / 2     |
+| Worst canal/river gauge           | above warning / above critical / over bank       | 1 / 2 / 3 |
+| Several gauges                    | >=2 over bank, or >=2-3 above critical           | +1        |
+| Rising                            | >=10 cm since the previous run (15 min)          | 1         |
+| Forecast rain, next 3 h           | >=10 / >=30 mm                                   | 1 / 2     |
+| News/social naming the district   | >=1 in the last 12 h                             | 1         |
 
 Levels: normal <3, watch 3-4, warning 5-7, severe >=8.
+Confidence: high = fresh rain + water level + forecast and a local report;
+medium = two fresh types; low = one.
 
-Confidence depends on how many independent, fresh evidence types agree:
-- high: rain, water level and forecast are all fresh, plus a local report
-- medium: two fresh types
-- low: one fresh type
+Quality control: readings older than 3 h, missing or implausible are flagged,
+greyed out and not scored. BMA gauges with placeholder thresholds (bank 0,
+critical 0/warning -0.2) or contradictory ones (bank below critical) have those
+thresholds dropped and are flagged `threshold_suspect`.
 
-Quality control:
-- Readings older than 3 h are flagged `stale`.
-- Implausible values are flagged `out_of_range`.
-- Missing values are flagged.
-- Flagged readings are shown grey on the map and excluded from scoring.
+Canals: gauges are grouped by canal name (`ค.ลาดพร้าว ...`, `ปตร.คลองแสนแสบ`,
+pump stations named after a canal). Each canal shows its worst gauge, counts
+over bank/critical/warning, how many are rising, and the districts it crosses.
 
-Every evidence item carries its `source_id`, station ID and timestamp. Items are grouped as measured, forecast, reported (unverified) and confirmed. Confirmed stays empty until a CCTV or satellite verification step exists.
+## News filter (`news_filter.py`)
 
-The thresholds are a starting point. Calibrate them against past BMA ponding reports before anyone relies on them.
+Kept only if the headline reports rising water, active flooding or an official
+warning. Dropped, with the reason counted on the page:
+
+- opinion, columns, analysis, emotional or question headlines
+- politics, meetings, officials' visits, troop/relief deployments
+- water receding, clean-up, donations, compensation
+- weather forecasts with no reported impact
+
+Headlines are tied to districts by district name, canal name, or a major road or
+landmark (`places.py`, e.g. Vibhavadi -> Din Daeng, Chatuchak, Lak Si, Don
+Mueang). Run `python3 news_filter.py` to check the rules against examples.
+
+The thresholds are a starting point. Calibrate them against past BMA ponding
+reports before anyone relies on them.
 
 ## Run locally
 
@@ -79,14 +98,14 @@ Direct scraping of Facebook and X needs paid APIs and runs against their terms o
 FLOODWATCHER_SOCIAL_FEEDS = id|Label|https://example.org/feed.rss;id2|Label 2|https://...
 ```
 
-Set it under Settings -> Secrets and variables -> Actions -> Variables. Items are kept only if the title matches flood keywords. Items are linked to zones by district or road names.
+Set it under Settings -> Secrets and variables -> Actions -> Variables. Items go through the same news filter and district matching.
 
 ## Next steps
 
 - Scrape BMA DDS canal, gate and pump data from dds.bangkok.go.th (no public API).
 - Add the GISTDA flood-extent Open API (needs an API key) to fill the "confirmed" group.
 - Add tide data from the Hydrographic Department for Chao Phraya backwater.
-- Break alerts down to district (khet) and road level with a DEM-based ponding index.
-- Push notifications (LINE Notify replacement, Telegram) when a zone rises a level.
+- Break alerts down further to road level with a DEM-based ponding index.
+- Push notifications (LINE Notify replacement, Telegram) when a district rises a level.
 
 Disclaimer: experimental and not an official warning. Follow BMA (1555), DDPM (1784) and TMD.
