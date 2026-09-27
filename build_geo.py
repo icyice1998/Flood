@@ -101,7 +101,7 @@ def build_canals():
         ln = line(el, 0.00012)
         if ln:
             groups.setdefault(key, []).append(ln)
-            if key.startswith("แม่น้ำ") or tags.get("waterway") == "river":
+            if key.startswith("แม่น้ำ"):  # many คลอง are tagged waterway=river in OSM
                 kinds[key] = "river"
     feats = [{"type": "Feature", "properties": {"id": k, "name": k, "kind": kinds.get(k, "canal")},
               "geometry": {"type": "MultiLineString", "coordinates": v}} for k, v in sorted(groups.items())]
