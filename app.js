@@ -16,7 +16,7 @@
     overbank: { th: "ล้นตลิ่ง", hex: "#c62828" },
     critical: { th: "เกินวิกฤต", hex: "#e46c0a" },
     warning: { th: "เกินเฝ้าระวัง", hex: "#d9a400" },
-    normal: { th: "ปกติ", hex: "#2e9d5b" },
+    normal: { th: "ปกติ", hex: "#1e88e5" },
     unknown: { th: "ไม่มีข้อมูล", hex: "#8a94a0" },
   };
   const CONF = { high: "สูง", medium: "ปานกลาง", low: "ต่ำ" };
@@ -26,7 +26,7 @@
     yellow: { th: "รถติด", hex: "#d9a400", rank: 1 },
     green: { th: "น้ำลด/ผ่านได้", hex: "#2e9d5b", rank: 0 },
   };
-  const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#64b5f6" };
+  const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#1e88e5" };
   const CAT = { rising: "น้ำเพิ่ม", flooding: "น้ำท่วม", warning: "เตือนภัย", rain: "ฝนหนัก" };
   const EVIDENCE = [
     ["measured", "ตรวจวัดแล้ว"],
@@ -102,7 +102,7 @@
     "เส้นคลอง (สีตามสถานะ)": layers.canalLines,
     "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
-    "ข่าว (ตามตัวกรองในแท็บข่าว)": layers.news,
+    "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
@@ -111,7 +111,7 @@
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
     `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
     `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
-    `<b>เส้นคลอง</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>ปกติ (สีเปลี่ยนตามสถานะ)</div></div>`;
+    `<b>เส้นคลอง</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>ปกติ (สีฟ้า; เหลือง/ส้ม/แดง เมื่อน้ำสูง)</div></div>`;
   const legendToggle = $("#legend .ltoggle");
   const setLegend = (open) => { $("#legend").classList.toggle("closed", !open); legendToggle.setAttribute("aria-expanded", String(open)); };
   legendToggle.addEventListener("click", () => setLegend($("#legend").classList.contains("closed")));
@@ -285,6 +285,7 @@
   // Read a filter control; tolerate a cached older page that lacks it
   const val = (sel, dflt = "") => { const el = $(sel); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : dflt; };
   const newsCats = new Set();
+  let newsWin = "1440";
 
   function filteredEvents() {
     if (!DATA) return [];
@@ -301,7 +302,7 @@
   function filteredNews() {
     if (!DATA) return [];
     const q = val("#nq");
-    const win = +val("#ntime", "1440");
+    const win = +val("#ntime", newsWin);
     return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
       (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
       (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
@@ -334,7 +335,7 @@
     L.geoJSON(CANAL_GEO, {
       style: (f) => {
         const st = statusOfCanal(f.properties.name);
-        return { color: CANAL_COLOR[st], weight: st === "normal" || st === "unknown" ? 2 : 4, opacity: 0.85 };
+        return { color: CANAL_COLOR[st], weight: st === "normal" || st === "unknown" ? 3 : 5, opacity: 0.9 };
       },
       onEachFeature: (f, lyr) => {
         const c = DATA.canals.find((x) => x.name === f.properties.name);
@@ -502,11 +503,19 @@
     if (move && window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
 
+  function syncNewsbar(list) {
+    const win = val("#ntime", newsWin);
+    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === win)));
+    const pinned = list.filter((n) => n.districts.length).length;
+    if ($("#nbcount")) $("#nbcount").textContent = `${pinned} ข่าว`;
+  }
+
   function renderNews() {
     const d = DATA;
-    if (!$("#nlist")) { drawNewsPins(filteredNews()); return; }
     const list = filteredNews();
     drawNewsPins(list);
+    syncNewsbar(list);
+    if (!$("#nlist")) return;
     const official = (d.official || []).map((o) =>
       `<li><span class="tag official">GDACS ${esc(o.level)}</span><a href="${safeUrl(o.link)}" target="_blank" rel="noopener">${esc(o.title)}</a></li>`).join("");
     const pinned = list.filter((n) => n.districts.length).length;
@@ -579,12 +588,23 @@
   ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
   ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
   ["#nq", "#ntime"].forEach((s) => $(s)?.addEventListener("input", renderNews));
-  document.querySelectorAll("#ncats button").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll("#ncats button, #mncats button").forEach((b) => b.addEventListener("click", () => {
     const c = b.dataset.cat;
     if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
-    b.setAttribute("aria-pressed", String(newsCats.has(c)));
+    document.querySelectorAll(`#ncats button[data-cat="${c}"], #mncats button[data-cat="${c}"]`).forEach((x) => x.setAttribute("aria-pressed", String(newsCats.has(c))));
     renderNews();
   }));
+  // map news bar: time segments mirror the news-tab dropdown
+  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => {
+    if ($("#ntime")) $("#ntime").value = b.dataset.win;
+    newsWin = b.dataset.win;
+    renderNews();
+  }));
+  const nbToggle = $("#nbtoggle");
+  const setNewsbar = (open) => { $("#newsbar")?.classList.toggle("closed", !open); nbToggle?.setAttribute("aria-expanded", String(open)); };
+  nbToggle?.addEventListener("click", () => setNewsbar($("#newsbar").classList.contains("closed")));
+  setNewsbar(window.innerWidth >= 800);
+  map.on("overlayadd overlayremove", (e) => { if (e.layer === layers.news) $("#newsbar").hidden = e.type === "overlayremove"; });
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)
