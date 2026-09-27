@@ -1,6 +1,8 @@
 (() => {
   const DATA_URL = "data/latest.json";
   const DISTRICTS_URL = "data/districts.geojson";
+  const CANALS_URL = "data/canals.geojson";
+  const ROADS_URL = "data/roads.geojson";
   const REFRESH_MS = 5 * 60 * 1000;
   const STALE_MIN = 45;
 
@@ -18,6 +20,13 @@
     unknown: { th: "ไม่มีข้อมูล", hex: "#8a94a0" },
   };
   const CONF = { high: "สูง", medium: "ปานกลาง", low: "ต่ำ" };
+  const ROADC = {
+    red: { th: "ผ่านยาก/รถติดมาก", hex: "#c62828", rank: 3 },
+    orange: { th: "น้ำท่วมขัง", hex: "#e46c0a", rank: 2 },
+    yellow: { th: "รถติด", hex: "#d9a400", rank: 1 },
+    green: { th: "น้ำลด/ผ่านได้", hex: "#2e9d5b", rank: 0 },
+  };
+  const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#64b5f6" };
   const CAT = { rising: "น้ำเพิ่ม", flooding: "น้ำท่วม", warning: "เตือนภัย", rain: "ฝนหนัก" };
   const EVIDENCE = [
     ["measured", "ตรวจวัดแล้ว"],
@@ -65,7 +74,7 @@
     return null;
   };
 
-  let DATA = null, GEO = null;
+  let DATA = null, GEO = null, CANAL_GEO = null, ROAD_GEO = null;
   const byId = {};
   const districtLayers = {};
 
@@ -85,19 +94,27 @@
     highlight: L.layerGroup().addTo(map),
     me: L.layerGroup().addTo(map),
     cctv: L.layerGroup().addTo(map),
+    canalLines: L.layerGroup().addTo(map),
+    roadLines: L.layerGroup().addTo(map),
+    events: L.layerGroup().addTo(map),
   };
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
     "ระดับน้ำคลอง (กทม.)": layers.canal,
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
+    "เส้นคลอง (สีตามสถานะ)": layers.canalLines,
+    "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
+    "ถนนที่มีรายงาน": layers.roadLines,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
 
   $("#legend").innerHTML = `<button type="button" class="ltoggle" aria-expanded="true">สัญลักษณ์</button><div class="lbody">` +
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
-    `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}</div>`;
+    `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
+    `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
+    `<b>เส้นคลอง</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>ปกติ (สีเปลี่ยนตามสถานะ)</div></div>`;
   const legendToggle = $("#legend .ltoggle");
   const setLegend = (open) => { $("#legend").classList.toggle("closed", !open); legendToggle.setAttribute("aria-expanded", String(open)); };
   legendToggle.addEventListener("click", () => setLegend($("#legend").classList.contains("closed")));
@@ -106,6 +123,8 @@
   function drawMap(d) {
     ["districts", "canal", "river", "rain", "highlight"].forEach((k) => layers[k].clearLayers());
     drawCameras(d.cameras || []);
+    drawCanalLines(d);
+    drawEvents(d.events || []);
     if (GEO) {
       L.geoJSON(GEO, {
         style: (f) => {
@@ -263,6 +282,102 @@
     if (b) { e.preventDefault(); openCamera(b.dataset.cam); }
   });
 
+  // ------------------------------------------------------------- canal lines & road incidents
+  const canalLayerByName = {};
+  const statusOfCanal = (name) => (DATA.canals.find((c) => c.name === name) || {}).status || "unknown";
+
+  function drawCanalLines() {
+    layers.canalLines.clearLayers();
+    Object.keys(canalLayerByName).forEach((k) => delete canalLayerByName[k]);
+    if (!CANAL_GEO) return;
+    L.geoJSON(CANAL_GEO, {
+      style: (f) => {
+        const st = statusOfCanal(f.properties.name);
+        return { color: CANAL_COLOR[st], weight: st === "normal" || st === "unknown" ? 2 : 4, opacity: 0.85 };
+      },
+      onEachFeature: (f, lyr) => {
+        const c = DATA.canals.find((x) => x.name === f.properties.name);
+        canalLayerByName[f.properties.name] = lyr;
+        lyr.bindTooltip(`${esc(f.properties.name)}${c ? " · " + STATUS[c.status].th : ""}`, { sticky: true });
+        lyr.on("click", () => { selectTab("canals"); $("#cq").value = f.properties.name; $("#cstatus").value = ""; $("#cdist").value = ""; renderCanals(); focusCanal(f.properties.name, false); });
+      },
+    }).addTo(layers.canalLines);
+  }
+
+  // distance (km) from point to a polyline, equirectangular approximation
+  function kmToLine(lat, lon, coords) {
+    const kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.57;
+    let best = Infinity;
+    for (let i = 1; i < coords.length; i++) {
+      const [ax, ay] = coords[i - 1], [bx, by] = coords[i];
+      const x1 = (ax - lon) * kx, y1 = (ay - lat) * ky, x2 = (bx - lon) * kx, y2 = (by - lat) * ky;
+      const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / L2)) : 0;
+      best = Math.min(best, Math.hypot(x1 + t * dx, y1 + t * dy));
+    }
+    return best;
+  }
+  const roadMatch = (evKey, roadKey) => evKey && roadKey && (evKey.includes(roadKey) || roadKey.includes(evKey.split(/\d/)[0]));
+
+  const eventMarkers = {};
+  function drawEvents(events) {
+    layers.events.clearLayers();
+    layers.roadLines.clearLayers();
+    Object.keys(eventMarkers).forEach((k) => delete eventMarkers[k]);
+    events.forEach((e) => {
+      const c = ROADC[e.color];
+      const size = e.official ? 18 : 14;
+      const m = L.marker([e.lat, e.lon], { zIndexOffset: 300 + c.rank * 10, title: e.title, icon: L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<div class="ev-pin" style="background:${c.hex};width:${size}px;height:${size}px;font-size:${size - 6}px">!</div>` }) })
+        .bindPopup(`<b>${esc(e.title)}</b> <span class="pill" style="background:${c.hex}">${c.th}</span><br>${esc(e.text)}<br>
+          ${e.depth_cm ? `ความลึกที่รายงาน ~${e.depth_cm} ซม.<br>` : ""}<small>${fmtTime(e.start)} – ${fmtTime(e.stop)} · ${esc(e.source)}${e.district ? " · เขต" + esc(e.district) : ""}</small>`);
+      eventMarkers[e.id] = m;
+      m.addTo(layers.events);
+    });
+    if (!ROAD_GEO) return;
+    // colour only the road ways near a report on the same road (within 300 m), worst colour wins
+    const worst = new Map();
+    for (const e of events) {
+      if (!e.road_key) continue;
+      for (const f of ROAD_GEO.features) {
+        if (!roadMatch(e.road_key, f.properties.key)) continue;
+        if (kmToLine(e.lat, e.lon, f.geometry.coordinates) > 0.3) continue;
+        const prev = worst.get(f);
+        if (!prev || ROADC[e.color].rank > ROADC[prev.color].rank) worst.set(f, e);
+      }
+    }
+    for (const [f, e] of worst) {
+      const news = DATA.news.filter((n) => n.title.includes(f.properties.key.slice(0, 6))).slice(0, 3);
+      L.geoJSON(f, { style: { color: ROADC[e.color].hex, weight: 7, opacity: 0.75 } })
+        .bindPopup(`<b>${esc(f.properties.name)}</b> <span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span><br>
+          <small>รายงานล่าสุดใกล้ช่วงนี้: ${esc(e.title)} · ${fmtTime(e.start)} · ${esc(e.source)}</small>
+          ${news.length ? `<br><b>ข่าวที่กล่าวถึงถนนนี้</b><ul>${news.map((n) => `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("")}</ul>` : ""}`)
+        .addTo(layers.roadLines);
+    }
+  }
+
+  function renderRoads() {
+    const q = $("#rq").value.trim();
+    const col = $("#rcolor").value;
+    const off = $("#rofficial").checked;
+    const rank = (e) => -ROADC[e.color].rank;
+    const list = (DATA.events || []).filter((e) => (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
+      (!col || e.color === col) && (!off || e.official)).sort((a, b) => rank(a) - rank(b) || (a.start < b.start ? 1 : -1));
+    const n = (c) => (DATA.events || []).filter((e) => e.color === c).length;
+    $("#rcount").innerHTML = `${list.length} รายงาน · <b style="color:${ROADC.red.hex}">แดง ${n("red")}</b> · <b style="color:${ROADC.orange.hex}">ส้ม ${n("orange")}</b> · เหลือง ${n("yellow")} · เขียว ${n("green")} · แตะเพื่อดูบนแผนที่`;
+    $("#rlist").innerHTML = list.slice(0, 200).map((e) => `<li class="ev" data-ev="${esc(e.id)}"><span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span>
+      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}</b>
+      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
+    document.querySelectorAll("#rlist li[data-ev]").forEach((li) => li.addEventListener("click", () => {
+      const m = eventMarkers[li.dataset.ev];
+      if (!m) return;
+      if (!map.hasLayer(layers.events)) layers.events.addTo(map);
+      map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+      m.openPopup();
+      if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    }));
+  }
+
   // ------------------------------------------------------------- panel
   function evidenceList(items) {
     if (!items.length) return `<p class="empty">ไม่มี</p>`;
@@ -304,29 +419,47 @@
 
   function renderCanals() {
     const q = $("#cq").value.trim();
-    const only = $("#conly").checked;
+    const st = $("#cstatus").value;
+    const dist = $("#cdist").value;
+    const sel = $("#cdist");
+    if (sel.options.length <= 1) {
+      const ds = [...new Set(DATA.canals.flatMap((c) => c.districts))].sort((a, b) => a.localeCompare(b, "th"));
+      sel.insertAdjacentHTML("beforeend", ds.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join(""));
+    }
     const list = DATA.canals.filter((c) => (!q || c.name.includes(q) || c.districts.some((d) => d.includes(q))) &&
-      (!only || ["overbank", "critical", "warning"].includes(c.status)));
-    $("#ccount").textContent = `${list.length} คลอง/แม่น้ำ · แตะแถวเพื่อดูจุดวัดบนแผนที่`;
+      (!st || (st === "alert" ? ["overbank", "critical", "warning"].includes(c.status) : c.status === st)) &&
+      (!dist || c.districts.includes(dist)));
+    $("#ccount").textContent = `${list.length} คลอง/แม่น้ำ · แตะแถวเพื่อดูเส้นคลองและจุดวัดบนแผนที่`;
     $("#clist").innerHTML = `<table class="canals"><tr><th>คลอง</th><th>สถานะ</th><th>จุดที่หนักสุด</th></tr>
       ${list.map((c) => {
         const w = c.worst;
         const wtxt = w ? `${esc(w.name)}<br><small>${num(w.value)} ม.${w.bank != null ? " / ตลิ่ง " + num(w.bank) : ""}${w.bank_percent != null ? " (" + w.bank_percent.toFixed(0) + "%)" : ""} · ${fmtTime(w.time)}</small>` : "–";
         const counts = [c.overbank && `ล้น ${c.overbank}`, c.critical && `วิกฤต ${c.critical}`, c.warning && `เฝ้าระวัง ${c.warning}`].filter(Boolean).join(" · ");
-        return `<tr data-canal="${esc(c.name)}"><td><b>${esc(c.name)}</b><br><small>${c.districts.map(esc).join(", ")}</small>${c.news ? `<br><small class="warn">ข่าว ${c.news}</small>` : ""}</td>
+        return `<tr data-canal="${esc(c.name)}"><td><b>${esc(c.name)}</b>${canalLayerByName[c.name] ? "" : ' <small title="ไม่พบเส้นคลองใน OpenStreetMap">(ไม่มีเส้น)</small>'}<br><small>${c.districts.map(esc).join(", ")}</small>${c.news ? `<br><small class="warn">ข่าว ${c.news}</small>` : ""}</td>
           <td><span class="pill" style="background:${STATUS[c.status].hex}">${STATUS[c.status].th}</span><br><small>จุดวัด ${c.reporting}/${c.gauges}${counts ? "<br>" + counts : ""}</small>${c.rising ? `<br><small class="bad">▲ ขึ้น ${c.rising} จุด</small>` : ""}</td>
           <td>${wtxt}</td></tr>`;
       }).join("")}</table>`;
     document.querySelectorAll("#clist tr[data-canal]").forEach((tr) => tr.addEventListener("click", () => focusCanal(tr.dataset.canal)));
   }
 
-  function focusCanal(name) {
+  function focusCanal(name, move = true) {
     layers.highlight.clearLayers();
     const gs = [...DATA.stations.canal, ...DATA.stations.river].filter((g) => g.canal === name);
-    if (!gs.length) return;
+    const lineLyr = canalLayerByName[name];
+    let bounds = null;
+    if (lineLyr) {
+      const glow = L.geoJSON(lineLyr.feature, { style: { color: "#0b6bcb", weight: 10, opacity: 0.35 }, interactive: false }).addTo(layers.highlight);
+      L.geoJSON(lineLyr.feature, { style: { color: CANAL_COLOR[statusOfCanal(name)], weight: 5, opacity: 1 }, interactive: false }).addTo(layers.highlight);
+      bounds = glow.getBounds();
+    }
     gs.forEach((g) => L.circleMarker([g.lat, g.lon], { radius: 11, color: "#0b6bcb", weight: 3, fill: false }).bindPopup(gaugePopup(g)).addTo(layers.highlight));
-    map.fitBounds(L.latLngBounds(gs.map((g) => [g.lat, g.lon])).pad(0.3), { maxZoom: 14 });
-    if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    if (gs.length) {
+      const gb = L.latLngBounds(gs.map((g) => [g.lat, g.lon]));
+      bounds = bounds ? bounds.extend(gb) : gb;
+    }
+    if (!bounds) return;
+    if (move) map.fitBounds(bounds.pad(0.15), { maxZoom: 15 });
+    if (move && window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
 
   function renderNews() {
@@ -392,7 +525,8 @@
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
   ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s).addEventListener("input", renderDistricts));
-  ["#cq", "#conly"].forEach((s) => $(s).addEventListener("input", renderCanals));
+  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s).addEventListener("input", renderCanals));
+  ["#rq", "#rcolor", "#rofficial"].forEach((s) => $(s).addEventListener("input", renderRoads));
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)
@@ -521,6 +655,9 @@
   async function load() {
     try {
       if (!GEO) GEO = await (await fetch(DISTRICTS_URL)).json();
+      // Static line layers are optional: the page still works if they are missing
+      if (!CANAL_GEO) CANAL_GEO = await fetch(CANALS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      if (!ROAD_GEO) ROAD_GEO = await fetch(ROADS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null);
       const r = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const next = await r.json();
@@ -529,7 +666,7 @@
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);
-      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources(); renderMine();
+      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources(); renderMine(); renderRoads();
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");

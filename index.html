@@ -31,6 +31,7 @@
     <nav class="tabs" role="tablist">
       <button type="button" role="tab" data-tab="districts" aria-selected="true">เขต</button>
       <button type="button" role="tab" data-tab="canals">คลอง</button>
+      <button type="button" role="tab" data-tab="roads">ถนน</button>
       <button type="button" role="tab" data-tab="news">ข่าว</button>
       <button type="button" role="tab" data-tab="sources">แหล่งข้อมูล</button>
       <button type="button" role="tab" data-tab="about">วิธีคิด</button>
@@ -57,11 +58,35 @@
     <section class="tab" id="tab-canals" hidden>
       <div class="filters">
         <input id="cq" type="search" placeholder="ค้นหาคลองหรือเขต เช่น ลาดพร้าว" aria-label="ค้นหาคลอง">
-        <label class="chk"><input id="conly" type="checkbox" checked> เฉพาะที่เกินเฝ้าระวัง</label>
+        <select id="cstatus" aria-label="สถานะคลอง">
+          <option value="alert">เกินเฝ้าระวังขึ้นไป</option>
+          <option value="">ทุกสถานะ</option>
+          <option value="overbank">ล้นตลิ่ง</option>
+          <option value="critical">เกินวิกฤต</option>
+          <option value="warning">เกินเฝ้าระวัง</option>
+          <option value="normal">ปกติ</option>
+        </select>
+        <select id="cdist" aria-label="เขต"><option value="">ทุกเขต</option></select>
       </div>
       <p class="count" id="ccount"></p>
       <div id="clist"></div>
-      <p class="empty">ระดับน้ำคลองจากสถานีของสำนักการระบายน้ำ กทม. (ผ่าน ThaiWater) เทียบกับระดับตลิ่ง ระดับวิกฤต และระดับเฝ้าระวังของแต่ละสถานี</p>
+      <p class="empty">ระดับน้ำคลองจากสถานีของสำนักการระบายน้ำ กทม. (ผ่าน ThaiWater) เทียบกับระดับตลิ่ง ระดับวิกฤต และระดับเฝ้าระวังของแต่ละสถานี · เส้นคลองบนแผนที่ © OpenStreetMap</p>
+    </section>
+    <section class="tab" id="tab-roads" hidden>
+      <div class="filters">
+        <input id="rq" type="search" placeholder="ค้นหาถนน ซอย หรือเขต เช่น รามคำแหง" aria-label="ค้นหาถนน">
+        <select id="rcolor" aria-label="ระดับ">
+          <option value="">ทุกระดับ</option>
+          <option value="red">แดง: ผ่านยาก/รถติดมาก</option>
+          <option value="orange">ส้ม: น้ำท่วมขัง</option>
+          <option value="yellow">เหลือง: รถติด</option>
+          <option value="green">เขียว: น้ำลด/ผ่านได้</option>
+        </select>
+        <label class="chk"><input id="rofficial" type="checkbox"> เฉพาะกรมทางหลวง/iTIC</label>
+      </div>
+      <p class="count" id="rcount"></p>
+      <ul class="news" id="rlist"></ul>
+      <p class="empty">รายงานเหตุบนถนนจาก Longdo Traffic: กรมทางหลวง เจ้าหน้าที่ iTIC และประชาชน · แดง = มีรายงานผ่านไม่ได้/รถติด/น้ำลึก ≥30 ซม. หรือมีรายงานรถติดในรัศมี 300 ม. · ถนนที่ไม่มีรายงานจะไม่แสดงสี</p>
     </section>
     <section class="tab" id="tab-news" hidden></section>
     <section class="tab" id="tab-sources" hidden></section>
@@ -77,8 +102,13 @@
         <tr><td>น้ำกำลังขึ้น</td><td>≥10 ซม. จากรอบก่อน (15 นาที)</td><td>1</td></tr>
         <tr><td>ฝนคาดการณ์ 3 ชม.</td><td>≥10 / ≥30 มม.</td><td>1 / 2</td></tr>
         <tr><td>ข่าว/โซเชียลที่ระบุเขต</td><td>≥1 รายการใน 12 ชม.</td><td>1</td></tr>
+      
+        <tr><td>รายงานบนถนนจากกรมทางหลวง/เจ้าหน้าที่ iTIC ในเขต</td><td>≥1 / ≥3 จุด (นับเป็น "ยืนยันผลกระทบแล้ว")</td><td>2 / 3</td></tr>
+        <tr><td>รายงานบนถนนจากประชาชน</td><td>≥2 จุด (เมื่อไม่มีรายงานจากเจ้าหน้าที่)</td><td>1</td></tr>
       </table>
       <p>ระดับ: ปกติ &lt;3 · เฝ้าระวัง 3–4 · เตือนภัย 5–7 · อันตราย ≥8</p>
+      <h3>สีถนน</h3>
+      <p>จากรายงาน Longdo Traffic (กรมทางหลวง, iTIC, ประชาชน): <b style="color:#c62828">แดง</b> = ผ่านไม่ได้/รถเล็กไม่ควรผ่าน/รถติด/น้ำลึก ≥30 ซม. หรือมีรายงานรถติดในรัศมี 300 ม. · <b style="color:#e46c0a">ส้ม</b> = น้ำท่วมขัง · <b style="color:#d9a400">เหลือง</b> = รถติดอย่างเดียว · <b style="color:#2e9d5b">เขียว</b> = น้ำลด/ผ่านได้ · ถนนที่ไม่มีรายงานไม่แสดงสี ระบบระบายสีเฉพาะช่วงถนนชื่อเดียวกันในรัศมี 300 ม. จากจุดรายงาน</p>
       <p>ความเชื่อมั่น: สูง = ฝนวัด + ระดับน้ำ + พยากรณ์ สดทั้งหมด และมีรายงานจากพื้นที่; ปานกลาง = หลักฐานสด ≥2 ประเภท; ต่ำ = 1 ประเภท</p>
       <p>ข้อมูลที่เก่ากว่า 3 ชม. หรือค่าผิดปกติจะถูกติดธง แสดงเป็นสีเทา และไม่นำมาคิดคะแนน</p>
       <h3>ข่าวที่นับ</h3>
