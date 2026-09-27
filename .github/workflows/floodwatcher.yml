@@ -1,21 +1,30 @@
 name: Floodwatcher data
 
+# GitHub's cron is best-effort and on this repo fires only every 2-3 hours.
+# So each run loops for ~5.5 h, fetching every 15 min, then dispatches the
+# next run itself. The cron below is only a backup that restarts the chain
+# if it ever breaks; whichever run starts, it loops and chains the same way.
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: floodwatcher
   cancel-in-progress: false
 
+env:
+  INTERVAL_SEC: 900
+  LOOP_SEC: 19800
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -23,20 +32,36 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Fetch and assess
+      - name: Fetch every 15 minutes
         env:
           FLOODWATCHER_SOCIAL_FEEDS: ${{ vars.FLOODWATCHER_SOCIAL_FEEDS }}
-        run: python fetch_data.py
-
-      - name: Commit data
         run: |
           git config user.name "floodwatcher-bot"
           git config user.email "action@github.com"
-          git add data/latest.json
-          git diff --cached --quiet && exit 0
-          git commit -m "floodwatcher: data $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
-          for i in 1 2 3; do
-            git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && exit 0
-            sleep $((i * 5))
+          end=$((SECONDS + LOOP_SEC))
+          while :; do
+            started=$SECONDS
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" || git rebase --abort || true
+            if python fetch_data.py; then
+              git add data/latest.json
+              if ! git diff --cached --quiet; then
+                git commit -q -m "floodwatcher: data $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+                for i in 1 2 3; do
+                  git pull -q --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push -q && break
+                  sleep $((i * 5))
+                done
+              fi
+            else
+              echo "::warning::fetch failed at $(date -u +%H:%MZ); keeping previous data"
+            fi
+            left=$((INTERVAL_SEC - (SECONDS - started)))
+            [ "$left" -lt 0 ] && left=0
+            [ $((SECONDS + left)) -ge "$end" ] && break
+            sleep "$left"
           done
-          exit 1
+
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run floodwatcher.yml --ref "${GITHUB_REF_NAME}" -R "${GITHUB_REPOSITORY}"

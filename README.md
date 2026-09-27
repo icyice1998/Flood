@@ -9,7 +9,7 @@ The dashboard tries to answer six questions: what is happening now, where, when,
 ## Architecture
 
 ```
-GitHub Actions (cron */15)                     GitHub Pages (static)
+GitHub Actions (self-chaining, every 15 min)   GitHub Pages (static)
 +---------------------------+                  +----------------------------+
 | fetch_data.py (stdlib)    |  commits         | index.html + app.js        |
 |  ThaiWater water level ---+--> data/         |  Leaflet + OpenStreetMap   |
@@ -38,6 +38,14 @@ GitHub Actions (cron */15)                     GitHub Pages (static)
 District boundaries (`data/districts.geojson`, 72 areas: Bangkok's 50 khet plus
 the amphoe of Nonthaburi, Pathum Thani, Samut Prakan and Samut Sakhon) are
 © OpenStreetMap contributors (ODbL), simplified via Nominatim.
+
+## Update schedule
+
+GitHub's cron is best-effort and on a new repo may fire only every few hours.
+`.github/workflows/floodwatcher.yml` therefore runs a loop: each run fetches
+every 15 minutes for ~5.5 hours, then dispatches the next run itself. The cron
+entry (every 30 min) is only a backup that restarts the chain if it breaks.
+To stop updates, disable the workflow under Actions.
 
 ## Risk logic (per district)
 
