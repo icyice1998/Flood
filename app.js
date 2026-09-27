@@ -34,11 +34,6 @@
     ["reported", "รายงานจากข่าว/โซเชียล (รอยืนยัน)"],
     ["confirmed", "ยืนยันผลกระทบแล้ว"],
   ];
-  const FILTER_REASON = {
-    "opinion/emotion": "ความเห็น/อารมณ์", "question/exclamation": "พาดหัวคำถาม/อุทาน",
-    "official activity/politics": "การประชุม/การเมือง", "receding/relief": "น้ำลด/แจกของ",
-    "not about rising water/flooding": "ไม่เกี่ยวกับน้ำเพิ่ม/ท่วม", "rain only, no impact": "พยากรณ์ฝนอย่างเดียว",
-  };
   const LINKS = [
     ["ThaiWater — ฝน ระดับน้ำ เขื่อน ทะเล", "https://www.thaiwater.net/"],
     ["เรดาร์ฝน กรมอุตุนิยมวิทยา", "https://weather.tmd.go.th/composite/index_composite.html"],
@@ -97,6 +92,7 @@
     canalLines: L.layerGroup().addTo(map),
     roadLines: L.layerGroup().addTo(map),
     events: L.layerGroup().addTo(map),
+    news: L.layerGroup().addTo(map),
   };
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
@@ -106,6 +102,7 @@
     "เส้นคลอง (สีตามสถานะ)": layers.canalLines,
     "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
+    "ข่าว (ตามตัวกรองในแท็บข่าว)": layers.news,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
@@ -124,7 +121,8 @@
     ["districts", "canal", "river", "rain", "highlight"].forEach((k) => layers[k].clearLayers());
     drawCameras(d.cameras || []);
     drawCanalLines(d);
-    drawEvents(d.events || []);
+    drawEvents(filteredEvents());
+    drawNewsPins(filteredNews());
     if (GEO) {
       L.geoJSON(GEO, {
         style: (f) => {
@@ -282,6 +280,47 @@
     if (b) { e.preventDefault(); openCamera(b.dataset.cam); }
   });
 
+  // ------------------------------------------------------------- time/topic filters (lists and map)
+  const minsAgo = (t) => (Date.now() - new Date(t)) / 60000;
+  const newsCats = new Set();
+
+  function filteredEvents() {
+    if (!DATA) return [];
+    const q = $("#rq").value.trim();
+    const col = $("#rcolor").value;
+    const off = $("#rofficial").checked;
+    const win = $("#rtime").value;
+    return (DATA.events || []).filter((e) =>
+      (win === "active" ? new Date(e.stop) >= Date.now() : (win === "0" || minsAgo(e.start) <= +win)) &&
+      (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
+      (!col || e.color === col) && (!off || e.official));
+  }
+
+  function filteredNews() {
+    if (!DATA) return [];
+    const q = $("#nq").value.trim();
+    const win = +$("#ntime").value;
+    return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
+      (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
+      (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
+  }
+
+  // one pin per district, with the number of matching headlines
+  function drawNewsPins(news) {
+    layers.news.clearLayers();
+    const byDist = new Map();
+    news.forEach((n) => n.districts.forEach((d) => { if (!byDist.has(d)) byDist.set(d, []); byDist.get(d).push(n); }));
+    for (const [d, items] of byDist) {
+      const z = byId[d];
+      if (!z) continue;
+      L.marker([z.lat, z.lon], { zIndexOffset: 400, title: `ข่าว ${d}`, icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
+        html: `<div class="news-pin">📰 ${items.length}</div>` }) })
+        .bindPopup(`<b>ข่าวในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
+          `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a><br><small>${fmtTime(n.time)}${n.via && n.via[d] ? " · จับคู่จาก " + esc(n.via[d]) : ""}</small></li>`).join("")}</ul>`, { maxWidth: 320 })
+        .addTo(layers.news);
+    }
+  }
+
   // ------------------------------------------------------------- canal lines & road incidents
   const canalLayerByName = {};
   const statusOfCanal = (name) => (DATA.canals.find((c) => c.name === name) || {}).status || "unknown";
@@ -357,13 +396,11 @@
   }
 
   function renderRoads() {
-    const q = $("#rq").value.trim();
-    const col = $("#rcolor").value;
-    const off = $("#rofficial").checked;
     const rank = (e) => -ROADC[e.color].rank;
-    const list = (DATA.events || []).filter((e) => (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
-      (!col || e.color === col) && (!off || e.official)).sort((a, b) => rank(a) - rank(b) || (a.start < b.start ? 1 : -1));
-    const n = (c) => (DATA.events || []).filter((e) => e.color === c).length;
+    const shown = filteredEvents();
+    drawEvents(shown);
+    const list = [...shown].sort((a, b) => rank(a) - rank(b) || (a.start < b.start ? 1 : -1));
+    const n = (c) => shown.filter((e) => e.color === c).length;
     $("#rcount").innerHTML = `${list.length} รายงาน · <b style="color:${ROADC.red.hex}">แดง ${n("red")}</b> · <b style="color:${ROADC.orange.hex}">ส้ม ${n("orange")}</b> · เหลือง ${n("yellow")} · เขียว ${n("green")} · แตะเพื่อดูบนแผนที่`;
     $("#rlist").innerHTML = list.slice(0, 200).map((e) => `<li class="ev" data-ev="${esc(e.id)}"><span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span>
       ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}</b>
@@ -464,15 +501,25 @@
 
   function renderNews() {
     const d = DATA;
+    const list = filteredNews();
+    drawNewsPins(list);
     const official = (d.official || []).map((o) =>
       `<li><span class="tag official">GDACS ${esc(o.level)}</span><a href="${safeUrl(o.link)}" target="_blank" rel="noopener">${esc(o.title)}</a></li>`).join("");
-    const filtered = Object.entries(d.news_filtered || {}).map(([k, n]) => `${FILTER_REASON[k] || k} ${n}`).join(" · ");
-    $("#tab-news").innerHTML = `<p class="empty">แสดงเฉพาะข่าวน้ำเพิ่ม/น้ำท่วม/ประกาศเตือน ภายใน ${d.method.news_max_age_h} ชม. · คัดออก: ${esc(filtered) || "–"}</p>
-      <ul class="news">${official}${d.news.map((n) => `
+    const pinned = list.filter((n) => n.districts.length).length;
+    $("#ncount").textContent = `${list.length} ข่าว · ปักหมุดบนแผนที่ ${pinned} ข่าว`;
+    $("#nlist").innerHTML = official + (list.map((n) => `
       <li>${n.kind === "social" ? `<span class="tag social">โซเชียล</span>` : ""}${n.categories.map((c) => `<span class="tag c-${c}">${CAT[c] || c}</span>`).join("")}
         <a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a>
-        <span class="m">${fmtTime(n.time)} · ${esc(n.source)}${n.districts.length ? " · เขต: " + n.districts.map(esc).join(", ") : ""}${n.canals.length ? " · " + n.canals.map(esc).join(", ") : ""}</span></li>`).join("")}</ul>
-      <p class="empty">ข่าว/โพสต์ถูกจับคู่กับเขตจากชื่อเขต คลอง ถนน หรือสถานที่ — เป็นหลักฐาน "รอยืนยัน" เท่านั้น</p>`;
+        <span class="m">${fmtTime(n.time)} · ${esc(n.source)}${n.districts.length ? ` · <button type="button" class="linkish" data-news-dist="${esc(n.districts[0])}">เขต: ${n.districts.map(esc).join(", ")}</button>` : ""}${n.canals.length ? " · " + n.canals.map(esc).join(", ") : ""}</span></li>`).join("")
+      || `<li class="empty">ไม่มีข่าวในช่วงเวลา/หัวข้อที่เลือก</li>`);
+    document.querySelectorAll("#nlist [data-news-dist]").forEach((b) => b.addEventListener("click", () => {
+      const z = byId[b.dataset.newsDist];
+      if (!z) return;
+      if (!map.hasLayer(layers.news)) layers.news.addTo(map);
+      map.setView([z.lat, z.lon], Math.max(map.getZoom(), 13));
+      layers.news.eachLayer((m) => { if (m.getLatLng().equals([z.lat, z.lon])) m.openPopup(); });
+      if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    }));
   }
 
   function renderSources() {
@@ -526,7 +573,14 @@
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
   ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s).addEventListener("input", renderDistricts));
   ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s).addEventListener("input", renderCanals));
-  ["#rq", "#rcolor", "#rofficial"].forEach((s) => $(s).addEventListener("input", renderRoads));
+  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s).addEventListener("input", renderRoads));
+  ["#nq", "#ntime"].forEach((s) => $(s).addEventListener("input", renderNews));
+  document.querySelectorAll("#ncats button").forEach((b) => b.addEventListener("click", () => {
+    const c = b.dataset.cat;
+    if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
+    b.setAttribute("aria-pressed", String(newsCats.has(c)));
+    renderNews();
+  }));
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)

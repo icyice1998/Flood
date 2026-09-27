@@ -75,6 +75,15 @@
     <section class="tab" id="tab-roads" hidden>
       <div class="filters">
         <input id="rq" type="search" placeholder="ค้นหาถนน ซอย หรือเขต เช่น รามคำแหง" aria-label="ค้นหาถนน">
+        <select id="rtime" aria-label="ช่วงเวลา">
+          <option value="active" selected>ยังมีผลอยู่</option>
+          <option value="15">รายงานใน 15 นาที</option>
+          <option value="30">รายงานใน 30 นาที</option>
+          <option value="60">รายงานใน 1 ชม.</option>
+          <option value="240">รายงานใน 4 ชม.</option>
+          <option value="1440">รายงานใน 24 ชม.</option>
+          <option value="0">ทั้งหมด</option>
+        </select>
         <select id="rcolor" aria-label="ระดับ">
           <option value="">ทุกระดับ</option>
           <option value="red">แดง: ผ่านยาก/รถติดมาก</option>
@@ -88,7 +97,28 @@
       <ul class="news" id="rlist"></ul>
       <p class="empty">รายงานเหตุบนถนนจาก Longdo Traffic: กรมทางหลวง เจ้าหน้าที่ iTIC และประชาชน · แดง = มีรายงานผ่านไม่ได้/รถติด/น้ำลึก ≥30 ซม. หรือมีรายงานรถติดในรัศมี 300 ม. · ถนนที่ไม่มีรายงานจะไม่แสดงสี</p>
     </section>
-    <section class="tab" id="tab-news" hidden></section>
+    <section class="tab" id="tab-news" hidden>
+      <div class="filters">
+        <input id="nq" type="search" placeholder="ค้นหาข่าว เขต หรือถนน" aria-label="ค้นหาข่าว">
+        <select id="ntime" aria-label="ช่วงเวลา">
+          <option value="15">15 นาที</option>
+          <option value="30">30 นาที</option>
+          <option value="60">1 ชม.</option>
+          <option value="240">4 ชม.</option>
+          <option value="1440" selected>24 ชม.</option>
+          <option value="0">ทั้งหมด (48 ชม.)</option>
+        </select>
+      </div>
+      <div class="chips" id="ncats" role="group" aria-label="หัวข้อข่าว">
+        <button type="button" data-cat="rising">น้ำเพิ่ม</button>
+        <button type="button" data-cat="flooding">น้ำท่วม</button>
+        <button type="button" data-cat="warning">เตือนภัย</button>
+        <button type="button" data-cat="rain">ฝนหนัก</button>
+        <button type="button" data-cat="social">โซเชียล</button>
+      </div>
+      <p class="count" id="ncount"></p>
+      <ul class="news" id="nlist"></ul>
+    </section>
     <section class="tab" id="tab-sources" hidden></section>
     <section class="tab" id="tab-about" hidden>
       <h3>ระบบประเมินอย่างไร</h3>
