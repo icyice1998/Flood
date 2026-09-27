@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher กล้อง AI</title>
+<meta name="description" content="AI อ่านภาพกล้องจราจรกรุงเทพฯ และปริมณฑลทุก 15 นาที: น้ำบนถนนและจำนวนรถ">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="cameras.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>กล้อง AI</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="cameras.html" aria-current="page">📷 กล้อง AI</a></nav>
+  </div>
+  <div class="status">
+    <span id="updated">กำลังโหลด…</span>
+    <button id="reload" type="button" title="โหลดข้อมูลใหม่">รีเฟรช</button>
+  </div>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="summary cam-summary" id="summary"></section>
+    <section class="tab">
+      <div class="filters">
+        <input id="q" type="search" placeholder="ค้นหาถนน เขต หรือชื่อกล้อง" aria-label="ค้นหากล้อง">
+      </div>
+      <div class="chips" id="st" role="group" aria-label="สถานะ">
+        <button type="button" data-st="water" aria-pressed="false">มีน้ำ</button>
+        <button type="button" data-st="wet" aria-pressed="false">ถนนเปียก</button>
+        <button type="button" data-st="dry" aria-pressed="false">แห้ง</button>
+        <button type="button" data-st="nodata" aria-pressed="false">ไม่มีภาพ</button>
+      </div>
+      <p class="count" id="count"></p>
+      <ul class="camlist" id="list"></ul>
+      <details class="how">
+        <summary>AI ประเมินอย่างไร</summary>
+        <p>ทุก 15 นาที ระบบดึงภาพ 1 เฟรมจากกล้องจราจรแต่ละตัว (รายชื่อจาก Longdo Traffic ภาพจาก iTIC และกรมทางหลวง) แล้วใช้โมเดลเปิด 2 ตัว:</p>
+        <ul>
+          <li><b>น้ำบนถนน</b>: CLIP (ViT-L-14) เทียบภาพกับคำบรรยาย "ถนนแห้ง / ถนนเปียก / ถนนน้ำท่วม / ภาพเสีย" ได้คะแนนน้ำท่วม 0–100%</li>
+          <li><b>จำนวนรถในภาพ</b>: YOLO11s นับรถยนต์ มอเตอร์ไซค์ รถเมล์ รถบรรทุก</li>
+        </ul>
+        <p>บางมุมกล้องดู "เหมือนมีน้ำ" ตลอดเวลา ระบบจึงเทียบกับ<b>ค่าปกติของกล้องตัวนั้นเอง</b> (ค่าต่ำสุดช่วง 20% ของ 7 วัน):</p>
+        <ul>
+          <li><b>น้ำท่วมผิวจราจร</b>: คะแนน ≥60% สูงกว่าค่าปกติ ≥35 จุด และพบติดกัน 2 รอบ (30 นาที)</li>
+          <li><b>อาจมีน้ำขัง</b>: คะแนน ≥50% และสูงกว่าค่าปกติ ≥25 จุด (กล้องที่ยังเก็บข้อมูลไม่ถึง 6 ชม. จะขึ้นได้แค่ระดับนี้)</li>
+          <li><b>ไม่มีภาพ</b>: กล้องออฟไลน์ จอดำ หรือขึ้น No signal</li>
+        </ul>
+        <p class="warnbox">เป็นการประเมินจากภาพเดียว ไม่ใช่การวัดระดับน้ำ อาจผิดได้ตอนกลางคืน ฝนเกาะเลนส์ หรือแสงสะท้อน ใช้คู่กับข้อมูลระดับน้ำและรายงานในหน้าแผนที่น้ำท่วม</p>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่กล้อง"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
+<script src="cameras.js?v=1"></script>
+</body>
+</html>

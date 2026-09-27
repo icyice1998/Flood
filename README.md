@@ -78,6 +78,20 @@ popup is open. District cards and the GPS card list cameras within 5 km, to
 help confirm flooding by eye. This is not an official open API and has no
 published terms; credit is shown on the map.
 
+## Camera AI (`cameras.html`, `scan_cameras.py`)
+
+A second page, **กล้อง AI**, shows what an AI reads from every live traffic camera in Greater Bangkok.
+
+- **Cameras.** The list comes from Longdo Traffic, with images from iTIC Foundation and the Dept. of Highways. Each run grabs one frame per camera: the newest HLS segment decoded by ffmpeg, or the still JPEG. Frames are not stored.
+- **Water.** open_clip ViT-L-14 (laion2b) compares the frame with dry / wet / flooded / broken-frame prompts. Some views always look watery to the model, so each camera is judged against its own baseline: the 20th-percentile score over up to 7 days, kept in `data/cameras_ai_history.json`.
+  - **น้ำท่วมผิวจราจร**: score ≥60%, at least 35 points above baseline, on two scans in a row.
+  - **อาจมีน้ำขัง**: score ≥50% and at least 25 points above baseline. A camera with under 24 scans can only reach this level.
+- **Vehicles.** Ultralytics YOLO11s counts cars, motorcycles, buses and trucks in the frame.
+- **Output.** `data/cameras_ai.json`: status, confidence, class probabilities, flood score, baseline, vehicle counts and image flags (night, frozen, uniform, no signal) per camera, plus the method and thresholds.
+- **Schedule.** `.github/workflows/camera-ai.yml` scans every 15 minutes. On main it self-chains like the data loop; a push to another branch runs a single scan for preview. Models are cached between runs.
+
+The result is an estimate from a single frame, not a measurement. It is shown as unconfirmed and is not used in the district scores.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.
