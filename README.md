@@ -39,6 +39,16 @@ District boundaries (`data/districts.geojson`, 72 areas: Bangkok's 50 khet plus
 the amphoe of Nonthaburi, Pathum Thani, Samut Prakan and Samut Sakhon) are
 © OpenStreetMap contributors (ODbL), simplified via Nominatim.
 
+## My location (GPS)
+
+The 📍 button uses the browser Geolocation API (`watchPosition`, high accuracy)
+to track the viewer's position. The page finds the district that contains it,
+shows that district's level and advice, and lists canal/river gauges within
+3 km and the nearest rain gauge. Everything runs in the browser: the position
+is never sent anywhere. It needs HTTPS (GitHub Pages provides it) and the
+viewer's permission; on later visits tracking resumes only if permission was
+already granted.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

@@ -83,6 +83,7 @@
     rain: L.layerGroup(),
     radar: L.layerGroup().addTo(map),
     highlight: L.layerGroup().addTo(map),
+    me: L.layerGroup().addTo(map),
   };
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
@@ -309,6 +310,126 @@
   ["#cq", "#conly"].forEach((s) => $(s).addEventListener("input", renderCanals));
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
+  // ------------------------------------------------------------- my location (GPS)
+  // Uses the browser Geolocation API; the position stays on this device.
+  const me = { watch: null, pos: null, follow: true, first: true, error: null };
+  const kmBetween = (a, b, c, d) => {
+    const p = Math.PI / 180;
+    const x = Math.sin((c - a) * p / 2) ** 2 + Math.cos(a * p) * Math.cos(c * p) * Math.sin((d - b) * p / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(x));
+  };
+  const inRing = (lon, lat, ring) => {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  };
+  function districtAt(lat, lon) {
+    if (!GEO) return null;
+    for (const f of GEO.features) {
+      const g = f.geometry;
+      const polys = g.type === "MultiPolygon" ? g.coordinates : [g.coordinates];
+      if (polys.some((poly) => inRing(lon, lat, poly[0]) && !poly.slice(1).some((h) => inRing(lon, lat, h)))) return f.properties.id;
+    }
+    return null;
+  }
+  const meIcon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [16, 16], iconAnchor: [8, 8] });
+
+  function renderMine() {
+    const box = $("#mine");
+    if (!me.watch && !me.error) { box.hidden = true; return; }
+    box.hidden = false;
+    if (me.error) {
+      box.className = "mine err";
+      box.innerHTML = `<h3>ตำแหน่งของฉัน</h3><p class="advice">${esc(me.error)}</p>`;
+      return;
+    }
+    if (!me.pos) {
+      box.className = "mine"; box.style.removeProperty("--lv");
+      box.innerHTML = `<h3>ตำแหน่งของฉัน</h3><p class="meta">กำลังหาตำแหน่ง GPS…</p>`;
+      return;
+    }
+    const { lat, lon, acc, time } = me.pos;
+    const id = districtAt(lat, lon);
+    const z = id && DATA ? byId[id] : null;
+    const gauges = DATA ? [...DATA.stations.canal, ...DATA.stations.river]
+      .filter((g) => g.status !== "unknown")
+      .map((g) => ({ g, d: kmBetween(lat, lon, g.lat, g.lon) }))
+      .filter((x) => x.d <= 3).sort((a, b) => a.d - b.d).slice(0, 3) : [];
+    const rain = DATA ? DATA.stations.rain.filter((r) => !r.flags.length)
+      .map((r) => ({ r, d: kmBetween(lat, lon, r.lat, r.lon) })).sort((a, b) => a.d - b.d)[0] : null;
+    box.className = "mine";
+    if (z) box.style.setProperty("--lv", LEVEL[z.level].hex); else box.style.removeProperty("--lv");
+    const where = z ? `${esc(z.name)} <small>${esc(z.province)}</small>` : "นอกพื้นที่ที่ระบบครอบคลุม";
+    box.innerHTML = `<h3><span>📍 ${where}</span>${z ? `<span class="badge">${LEVEL[z.level].th}</span>` : ""}</h3>
+      <div class="meta">ความแม่นยำ ±${Math.round(acc)} ม. · ${new Date(time).toLocaleTimeString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit" })}${z ? ` · คะแนนเขต ${z.score} · ความเชื่อมั่น${CONF[z.confidence]}` : ""}</div>
+      ${z ? `<p class="advice"><b>ควรทำอะไร:</b> ${esc(z.advice)}</p>` : ""}
+      ${gauges.length ? `<b style="font-size:.85rem">จุดวัดน้ำใกล้คุณ</b><ul>${gauges.map(({ g, d }) =>
+        `<li>${esc(g.name)} — <b style="color:${STATUS[g.status].hex}">${STATUS[g.status].th}</b> <small>${d.toFixed(1)} กม. · ${fmtTime(g.time)}</small></li>`).join("")}</ul>`
+        : `<p class="meta">ไม่มีจุดวัดระดับน้ำในรัศมี 3 กม.</p>`}
+      ${rain ? `<div class="meta">ฝนใกล้สุด: ${esc(rain.r.name)} (${rain.d.toFixed(1)} กม.) · 1 ชม. ${rain.r.rain_1h ?? "–"} มม. · 24 ชม. ${rain.r.rain_24h ?? "–"} มม.</div>` : ""}
+      <div class="row">${z ? `<button type="button" data-act="detail">ดูรายละเอียดเขต</button>` : ""}
+        <button type="button" data-act="center">กลับไปที่ตำแหน่ง</button><button type="button" data-act="stop">ปิด GPS</button></div>`;
+    box.querySelector('[data-act="detail"]')?.addEventListener("click", () => openDistrict(id));
+    box.querySelector('[data-act="center"]').addEventListener("click", () => { me.follow = true; map.setView([lat, lon], Math.max(map.getZoom(), 14)); });
+    box.querySelector('[data-act="stop"]').addEventListener("click", stopLocate);
+  }
+
+  function drawMe() {
+    layers.me.clearLayers();
+    if (!me.pos) return;
+    const { lat, lon, acc } = me.pos;
+    L.circle([lat, lon], { radius: acc, color: "#1a73e8", weight: 1, fillOpacity: 0.12, interactive: false }).addTo(layers.me);
+    L.marker([lat, lon], { icon: meIcon, keyboard: false }).bindTooltip("ตำแหน่งของฉัน").addTo(layers.me);
+    if (me.first || me.follow) {
+      map.setView([lat, lon], me.first ? 14 : map.getZoom());
+      me.first = false;
+    }
+  }
+
+  function startLocate() {
+    me.error = null;
+    if (!("geolocation" in navigator)) { me.error = "เบราว์เซอร์นี้ไม่รองรับ GPS"; renderMine(); return; }
+    if (!window.isSecureContext) { me.error = "ต้องเปิดผ่าน https:// จึงจะใช้ GPS ได้"; renderMine(); return; }
+    me.first = true; me.follow = true;
+    $("#locate").setAttribute("aria-pressed", "true");
+    $("#locate").classList.add("busy");
+    me.watch = navigator.geolocation.watchPosition((p) => {
+      me.pos = { lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, time: p.timestamp };
+      $("#locate").classList.remove("busy");
+      drawMe(); renderMine();
+    }, (err) => {
+      const msg = { 1: "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ Location ของเบราว์เซอร์สำหรับเว็บนี้ แล้วกดปุ่มอีกครั้ง",
+        2: "หาตำแหน่งไม่ได้ — ตรวจว่าเปิด GPS/Location ในเครื่องแล้ว", 3: "หาตำแหน่งนานเกินไป — ลองอีกครั้งในที่โล่ง" }[err.code] || err.message;
+      if (err.code === 1 || !me.pos) { stopLocate(); me.error = msg; }
+      renderMine();
+    }, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+    pref("fw-geo", "on");
+    renderMine();
+  }
+
+  function stopLocate() {
+    if (me.watch != null) navigator.geolocation.clearWatch(me.watch);
+    me.watch = null; me.pos = null; me.error = null;
+    layers.me.clearLayers();
+    $("#locate").setAttribute("aria-pressed", "false");
+    $("#locate").classList.remove("busy");
+    pref("fw-geo", "off");
+    renderMine();
+  }
+
+  $("#locate").addEventListener("click", () => {
+    if (me.watch == null) startLocate();
+    else if (me.pos) { me.follow = true; map.setView([me.pos.lat, me.pos.lon], Math.max(map.getZoom(), 14)); }
+  });
+  map.on("dragstart", () => { me.follow = false; });
+  // Resume tracking on return visits only if permission was already granted (no surprise prompt)
+  if (pref("fw-geo") === "on" && navigator.permissions) {
+    navigator.permissions.query({ name: "geolocation" }).then((st) => { if (st.state === "granted") startLocate(); }).catch(() => {});
+  }
+
   // ------------------------------------------------------------- load
   async function load() {
     try {
@@ -321,7 +442,7 @@
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);
-      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources();
+      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources(); renderMine();
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");
