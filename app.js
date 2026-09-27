@@ -94,12 +94,13 @@
     events: L.layerGroup().addTo(map),
     news: L.layerGroup().addTo(map),
   };
+  map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
     "ระดับน้ำคลอง (กทม.)": layers.canal,
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
-    "เส้นคลอง (สีตามสถานะ)": layers.canalLines,
+    "แนวคลองและแม่น้ำ (ฟ้า = ไม่ท่วม)": layers.canalLines,
     "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
@@ -111,7 +112,9 @@
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
     `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
     `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
-    `<b>เส้นคลอง</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>ปกติ (สีฟ้า; เหลือง/ส้ม/แดง เมื่อน้ำสูง)</div></div>`;
+    `<b>แนวคลอง / แม่น้ำ</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>คลอง ไม่ท่วม</div>` +
+    `<div><i class="ln thick" style="background:${CANAL_COLOR.normal}"></i>แม่น้ำ ไม่ท่วม</div>` +
+    `<div><i class="ln" style="background:${CANAL_COLOR.warning}"></i><i class="ln" style="background:${CANAL_COLOR.critical};margin-left:-3px"></i><i class="ln" style="background:${CANAL_COLOR.overbank};margin-left:-3px"></i>น้ำสูง → ล้นตลิ่ง</div></div>`;
   const legendToggle = $("#legend .ltoggle");
   const setLegend = (open) => { $("#legend").classList.toggle("closed", !open); legendToggle.setAttribute("aria-expanded", String(open)); };
   legendToggle.addEventListener("click", () => setLegend($("#legend").classList.contains("closed")));
@@ -333,9 +336,12 @@
     Object.keys(canalLayerByName).forEach((k) => delete canalLayerByName[k]);
     if (!CANAL_GEO) return;
     L.geoJSON(CANAL_GEO, {
+      pane: "water",
       style: (f) => {
         const st = statusOfCanal(f.properties.name);
-        return { color: CANAL_COLOR[st], weight: st === "normal" || st === "unknown" ? 3 : 5, opacity: 0.9 };
+        const river = f.properties.kind === "river" || f.properties.name.startsWith("แม่น้ำ");
+        const alert = st !== "normal" && st !== "unknown";
+        return { color: CANAL_COLOR[st], weight: (river ? 6 : 3.5) + (alert ? 2 : 0), opacity: 0.95, lineCap: "round" };
       },
       onEachFeature: (f, lyr) => {
         const c = DATA.canals.find((x) => x.name === f.properties.name);
