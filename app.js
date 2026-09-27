@@ -73,7 +73,7 @@
   const map = L.map("map", { zoomControl: true }).setView([13.76, 100.58], 10);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer · กล้อง: Longdo Traffic, iTIC, กรมทางหลวง',
   }).addTo(map);
 
   const layers = {
@@ -84,12 +84,14 @@
     radar: L.layerGroup().addTo(map),
     highlight: L.layerGroup().addTo(map),
     me: L.layerGroup().addTo(map),
+    cctv: L.layerGroup().addTo(map),
   };
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
     "ระดับน้ำคลอง (กทม.)": layers.canal,
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
+    "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
 
@@ -103,6 +105,7 @@
 
   function drawMap(d) {
     ["districts", "canal", "river", "rain", "highlight"].forEach((k) => layers[k].clearLayers());
+    drawCameras(d.cameras || []);
     if (GEO) {
       L.geoJSON(GEO, {
         style: (f) => {
@@ -180,6 +183,86 @@
     radarTimer = setInterval(() => { radarIdx = (radarIdx + 1) % radarFrames.length; showRadar(); }, 700);
   });
 
+  // ------------------------------------------------------------- CCTV (live HLS)
+  // Camera list from Longdo Traffic; streams served by iTIC Foundation / Dept. of Highways.
+  // Video loads only while a popup is open, to keep load on their servers low.
+  const camMarkers = {};
+  let camOpenId = null;
+  let hlsPlayer = null;
+  const camIcon = (live) => L.divIcon({ className: "", iconSize: [26, 26], iconAnchor: [13, 13],
+    html: `<div class="cam-pin${live ? "" : " off"}" title="CCTV">📹</div>` });
+
+  function stopVideo() {
+    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+  }
+
+  function camPopupHtml(c) {
+    return `<div class="cam-pop"><b>${esc(c.title)}</b><br><small>${esc(c.org)} · ${esc(c.id)}</small>
+      <div class="cam-video"><video muted playsinline controls preload="none"></video><div class="cam-msg">กำลังโหลดภาพสด…</div></div>
+      <small>${c.district ? "เขต" + esc(c.district) + " · " : ""}ตรวจสถานะ ${fmtTime(c.checked)} · <a href="${safeUrl(c.link)}" target="_blank" rel="noopener">เปิดในหน้าต่างใหม่</a></small></div>`;
+  }
+
+  function playCamera(c, root) {
+    stopVideo();
+    const video = root.querySelector("video");
+    const msg = root.querySelector(".cam-msg");
+    const fail = (t) => { msg.textContent = t; msg.hidden = false; };
+    if (!c.live) return fail("กล้องนี้ออฟไลน์ในรอบตรวจล่าสุด");
+    video.addEventListener("playing", () => { msg.hidden = true; }, { once: true });
+    if (window.Hls && Hls.isSupported()) {
+      hlsPlayer = new Hls({ maxBufferLength: 10, liveSyncDurationCount: 2 });
+      hlsPlayer.on(Hls.Events.ERROR, (_, e) => {
+        if (!e.fatal) return;
+        const codec = /codec|incompatible/i.test(e.details || "");
+        fail(codec ? "เบราว์เซอร์นี้เล่นวิดีโอ H.264 ไม่ได้ — ลองเปิดในหน้าต่างใหม่" : "เปิดภาพสดไม่ได้ — กล้องอาจออฟไลน์");
+        stopVideo();
+      });
+      hlsPlayer.loadSource(c.hls);
+      hlsPlayer.attachMedia(video);
+      hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(() => {}));
+    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      video.src = c.hls;  // Safari / iOS plays HLS natively
+      video.play().catch(() => {});
+      video.addEventListener("error", () => fail("เปิดภาพสดไม่ได้ — กล้องอาจออฟไลน์"), { once: true });
+    } else {
+      fail("เบราว์เซอร์นี้เล่นภาพสดไม่ได้");
+    }
+  }
+
+  function drawCameras(cams) {
+    layers.cctv.clearLayers();
+    Object.keys(camMarkers).forEach((k) => delete camMarkers[k]);
+    cams.forEach((c) => {
+      const m = L.marker([c.lat, c.lon], { icon: camIcon(c.live), zIndexOffset: 500, title: c.title })
+        .bindPopup(() => camPopupHtml(c), { maxWidth: 340, minWidth: 260, autoPanPadding: [20, 20] });
+      m.on("popupopen", (e) => { camOpenId = c.id; playCamera(c, e.popup.getElement()); });
+      m.on("popupclose", () => { if (camOpenId === c.id) { camOpenId = null; stopVideo(); } });
+      camMarkers[c.id] = m;
+      m.addTo(layers.cctv);
+    });
+  }
+
+  function camsNear(lat, lon, km, max) {
+    return (DATA && DATA.cameras || []).filter((c) => c.live)
+      .map((c) => ({ c, d: kmBetween(lat, lon, c.lat, c.lon) }))
+      .filter((x) => x.d <= km).sort((a, b) => a.d - b.d).slice(0, max);
+  }
+  const camButtons = (list) => list.map(({ c, d }) =>
+    `<button type="button" class="camlink" data-cam="${esc(c.id)}">📹 ${esc(c.title)}${d != null ? ` <small>· ${d.toFixed(1)} กม.</small>` : ""}</button>`).join("");
+
+  function openCamera(id) {
+    const m = camMarkers[id];
+    if (!m) return;
+    if (!map.hasLayer(layers.cctv)) layers.cctv.addTo(map);
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+    m.openPopup();
+    if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".camlink");
+    if (b) { e.preventDefault(); openCamera(b.dataset.cam); }
+  });
+
   // ------------------------------------------------------------- panel
   function evidenceList(items) {
     if (!items.length) return `<p class="empty">ไม่มี</p>`;
@@ -200,6 +283,8 @@
         ${EVIDENCE.map(([k, label]) => `<h4>${label}</h4>${evidenceList(z.evidence[k])}`).join("")}
         ${z.notes.map((n) => `<p class="empty">${esc(n)}</p>`).join("")}
         <div class="advice"><b>ควรทำอะไร:</b> ${esc(z.advice)}</div>
+        ${(() => { const cams = camsNear(z.lat, z.lon, 5, 3);
+          return cams.length ? `<h4>กล้อง CCTV ใกล้เขตนี้ (ดูภาพสดเพื่อยืนยันน้ำท่วม)</h4><div class="cams">${camButtons(cams)}</div>` : ""; })()}
         <button type="button" class="zoom" data-id="${esc(z.id)}">ดูบนแผนที่</button>
       </div></details>`;
   }
@@ -370,6 +455,8 @@
         `<li>${esc(g.name)} — <b style="color:${STATUS[g.status].hex}">${STATUS[g.status].th}</b> <small>${d.toFixed(1)} กม. · ${fmtTime(g.time)}</small></li>`).join("")}</ul>`
         : `<p class="meta">ไม่มีจุดวัดระดับน้ำในรัศมี 3 กม.</p>`}
       ${rain ? `<div class="meta">ฝนใกล้สุด: ${esc(rain.r.name)} (${rain.d.toFixed(1)} กม.) · 1 ชม. ${rain.r.rain_1h ?? "–"} มม. · 24 ชม. ${rain.r.rain_24h ?? "–"} มม.</div>` : ""}
+      ${(() => { const cams = camsNear(lat, lon, 5, 2);
+        return cams.length ? `<b style="font-size:.85rem">กล้อง CCTV ใกล้คุณ</b><div class="cams">${camButtons(cams)}</div>` : `<div class="meta">ไม่มีกล้อง CCTV ที่ออนไลน์ในรัศมี 5 กม.</div>`; })()}
       <div class="row">${z ? `<button type="button" data-act="detail">ดูรายละเอียดเขต</button>` : ""}
         <button type="button" data-act="center">กลับไปที่ตำแหน่ง</button><button type="button" data-act="stop">ปิด GPS</button></div>`;
     box.querySelector('[data-act="detail"]')?.addEventListener("click", () => openDistrict(id));
