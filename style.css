@@ -115,13 +115,42 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 }
 .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .legend i.sq { border-radius: 2px; }
+.legend i.ln { border-radius: 2px; height: 4px; vertical-align: 3px; }
+.legend i.ln.thick { height: 7px; vertical-align: 1px; }
+#rlist li.ev { cursor: pointer; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
+.chips button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }
+.chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.news-pin { background: #fff; color: #1b2430; border: 2px solid #0b6bcb; border-radius: 999px; font-size: 12px; font-weight: 700;
+  display: grid; place-items: center; width: 34px; height: 22px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.pop-news { margin: 4px 0 0; padding-left: 16px; }
+.pop-news li { margin-bottom: 4px; }
+.linkish { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.ev-pin { border-radius: 4px; border: 2px solid #fff; color: #fff; font-weight: 700; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); line-height: 1; }
+#rlist li.ev:hover { background: var(--bg); }
+#rlist .pill { margin-right: 4px; }
 .legend .ltoggle { border: 0; background: none; color: var(--text); font-weight: 600; font-size: .78rem; padding: 0; }
 .legend .ltoggle::after { content: " ▾"; }
 .legend.closed .ltoggle::after { content: " ▸"; }
 .legend.closed .lbody { display: none; }
 .legend b { display: block; font-size: .72rem; color: var(--muted); }
+.newsbar {
+  position: absolute; left: 54px; top: 10px; z-index: 510; max-width: calc(100% - 120px); background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: .8rem; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.newsbar .nbtoggle { border: 0; background: none; color: var(--text); font-weight: 600; font-size: .82rem; padding: 0; }
+.newsbar .nbtoggle::after { content: " ▾"; }
+.newsbar.closed .nbtoggle::after { content: " ▸"; }
+.newsbar.closed .nbbody { display: none; }
+.newsbar .nbbody { margin-top: 5px; }
+.newsbar .chips { margin: 5px 0 0; gap: 4px; }
+.newsbar .chips button { padding: 2px 9px; font-size: .76rem; }
+.seg { display: flex; flex-wrap: nowrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: max-content; max-width: 100%; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 3px 8px; font-size: .76rem; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .radar-ctl {
-  position: absolute; left: 54px; top: 10px; z-index: 500; background: var(--surface);
+  position: absolute; left: 54px; bottom: 90px; z-index: 500; background: var(--surface);
   border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: .8rem; display: flex; gap: 8px; align-items: center;
 }
 .locate {
@@ -161,6 +190,8 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
   .mapwrap { height: 60vh; order: -1; }
   .legend { font-size: .7rem; padding: 4px 8px; bottom: 44px; }
   .locate { bottom: 44px; }
+  .newsbar { max-width: calc(100% - 110px); padding: 4px 6px; }
+  .seg button { padding: 3px 6px; font-size: .72rem; }
   .locate span { display: none; }
   .panel { border-right: 0; overflow: visible; }
   .top { flex-wrap: wrap; }

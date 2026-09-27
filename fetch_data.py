@@ -36,17 +36,18 @@ BBOX = (13.45, 14.20, 100.20, 100.95)
 STALE_HOURS = 3
 NEARBY_KM = 4.0      # fallback radius when a district has no gauge of its own
 RISE_M = 0.10        # canal rise between two runs that counts as "rising"
-NEWS_MAX_AGE_H = 12
+NEWS_MAX_AGE_H = 48      # kept for the page's time filter
+NEWS_SCORE_H = 12        # only recent news counts towards a district's score
 
 THAIWATER = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/"
 
 NEWS_FEEDS = [
     ("news-google-th", "Google News (TH)",
      "https://news.google.com/rss/search?q=" + urllib.parse.quote(
-         "(น้ำท่วม OR ท่วมขัง OR น้ำรอระบาย OR ระดับน้ำ OR ล้นตลิ่ง) (กรุงเทพ OR กทม OR นนทบุรี OR ปทุมธานี OR สมุทรปราการ) when:1d")
+         "(น้ำท่วม OR ท่วมขัง OR น้ำรอระบาย OR ระดับน้ำ OR ล้นตลิ่ง) (กรุงเทพ OR กทม OR นนทบุรี OR ปทุมธานี OR สมุทรปราการ) when:2d")
      + "&hl=th&gl=TH&ceid=TH:th"),
     ("news-google-en", "Google News (EN)",
-     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok (flood OR flooding OR \"water level\") when:1d")
+     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok (flood OR flooding OR \"water level\") when:2d")
      + "&hl=en-TH&gl=TH&ceid=TH:en"),
 ]
 # Social feeds are RSS-only. Add more via FLOODWATCHER_SOCIAL_FEEDS="id|label|url;id|label|url"
@@ -482,6 +483,79 @@ def parse_rss(sid, label, url, kind, dist_rx, canal_rx, rejected):
     return out
 
 
+# Longdo Traffic incident feed: flood / traffic reports from Dept. of Highways, iTIC staff and the public
+EV_RED = re.compile(r"รถติด|ติดขัด|ติดสะสม|ผ่านไม่ได้|สัญจรไม่ได้|ไม่สามารถผ่าน|รถเล็ก\S{0,8}(?:ห้าม|งด|ไม่ควร|ผ่านไม่)|"
+                    r"ปิดการจราจร|ปิดถนน|ปิดเส้นทาง|heavy traffic|impassable|road closed", re.I)
+EV_GREEN = re.compile(r"ลดลง|แห้งแล้ว|น้ำแห้ง|คลี่คลาย|ผ่านได้ปกติ|สัญจรได้ปกติ|กลับมาสัญจร|receding|passable", re.I)
+EV_DEPTH = re.compile(r"(\d{1,3})\s*(?:ซม|ซ\.ม|เซนติเมตร|cm)", re.I)
+EV_KINDS = {"flood", "trafficjam", "roadclosed"}
+EV_PREFIX = re.compile(r"^(?:น้ำท่วม(?:ขัง)?|รถติด|ถนนปิด|ปิดถนน|การจราจรติดขัด)\s*")
+
+
+def road_key(name):
+    n = re.sub(r"^(?:ถนน|ถ\.)\s*", "", (name or "").strip())
+    return re.sub(r"\s+", "", n)
+
+
+def fetch_events(districts):
+    sid, url = "longdo-events", "https://event.longdo.com/feed/json"
+    label = "เหตุการณ์บนถนน Longdo Traffic (กรมทางหลวง / iTIC / ประชาชน)"
+    try:
+        data = json.loads(http_get(url, timeout=40))
+    except Exception as e:  # noqa: BLE001
+        record(sid, label, url, False, error=str(e)[:200], kind="reported")
+        return []
+    raw = []
+    for e in data:
+        kind = e.get("icon")
+        lat, lon = fnum(e.get("latitude")), fnum(e.get("longitude"))
+        if kind not in EV_KINDS or not in_bbox(lat, lon):
+            continue
+        try:
+            start = datetime.fromisoformat(e["start"]).replace(tzinfo=TZ)
+            stop = datetime.fromisoformat(e["stop"]).replace(tzinfo=TZ)
+        except (KeyError, ValueError):
+            continue
+        # active now, or started within the last 6 h
+        if stop < NOW - timedelta(minutes=30) and (NOW - start) > timedelta(hours=6):
+            continue
+        raw.append((e, kind, lat, lon, start, stop))
+
+    jams = [(lat, lon) for e, kind, lat, lon, *_ in raw if kind == "trafficjam"]
+    out = []
+    for e, kind, lat, lon, start, stop in raw:
+        text = f"{e.get('title', '')} {e.get('description', '')}"
+        depth = max((int(m) for m in EV_DEPTH.findall(text)), default=None)
+        contrib = e.get("contributor") or ""
+        official = contrib == "DOH Admin" or contrib.startswith("itic.")
+        src = "กรมทางหลวง" if contrib == "DOH Admin" else "เจ้าหน้าที่ iTIC" if contrib.startswith("itic.") else "ประชาชน (ผ่าน iTIC/Longdo)"
+        if kind == "roadclosed" or EV_RED.search(text) or (depth or 0) >= 30:
+            color = "red"
+        elif kind == "trafficjam":
+            color = "yellow"
+        elif EV_GREEN.search(text):
+            color = "green"
+        else:
+            color = "orange"
+        # flooding with a traffic-jam report within 300 m counts as heavy
+        if kind == "flood" and color == "orange" and any(km(lat, lon, a, b) <= 0.3 for a, b in jams):
+            color = "red"
+        title = e.get("title") or ""
+        road = EV_PREFIX.sub("", title).strip()
+        out.append({
+            "id": e.get("eid"), "kind": kind, "color": color, "title": title,
+            "text": re.sub(r"\s+", " ", e.get("description") or "")[:300],
+            "lat": round(lat, 6), "lon": round(lon, 6),
+            "start": iso(start), "stop": iso(stop), "official": official, "source": src,
+            "road": road, "road_key": road_key(road), "depth_cm": depth,
+            "district": district_of(districts, None, None, lat, lon), "source_id": sid,
+        })
+    out.sort(key=lambda x: x["start"], reverse=True)
+    record(sid, label, url, True, len(out), out[0]["start"] if out else None, kind="reported",
+           extra={"official": sum(x["official"] for x in out), "red": sum(x["color"] == "red" for x in out)})
+    return out
+
+
 def fetch_cameras(districts):
     """Traffic CCTV listed by Longdo Traffic (streams hosted by iTIC Foundation / Dept. of Highways).
     Keeps Greater Bangkok cameras with a real stream URL and probes each HLS playlist."""
@@ -592,7 +666,7 @@ def local_or_near(items, d):
     return near, bool(near)
 
 
-def assess(d, rain, gauges, forecast, news):
+def assess(d, rain, gauges, forecast, news, events=()):
     ev = {"measured": [], "forecast": [], "reported": [], "confirmed": []}
     score = 0
     fresh = set()
@@ -664,14 +738,30 @@ def assess(d, rain, gauges, forecast, news):
                                    "link": n["link"], "points": 1 if i == 0 else 0,
                                    "time": n["time"], "source_id": n["source_id"], "categories": n["categories"]})
 
+    # Road incident reports inside the district: Dept. of Highways / iTIC staff count as confirmed
+    de = [e for e in events if e["district"] == d["id"] and e["kind"] != "trafficjam" and e["color"] != "green"]
+    off = [e for e in de if e["official"]]
+    pub = [e for e in de if not e["official"]]
+    if off:
+        pts = 3 if len(off) >= 3 else 2
+        score += pts
+        for i, e in enumerate(off[:3]):
+            ev["confirmed"].append({"text": f"{e['title']} — {e['source']}" + (f" (ลึก ~{e['depth_cm']} ซม.)" if e["depth_cm"] else ""),
+                                    "points": pts if i == 0 else 0, "time": e["start"], "source_id": e["source_id"], "station": e["id"]})
+    if len(pub) >= 2 and not off:
+        score += 1
+    for i, e in enumerate(pub[:3]):
+        ev["reported"].append({"text": f"{e['title']} — {e['source']}", "points": 1 if (i == 0 and len(pub) >= 2 and not off) else 0,
+                               "time": e["start"], "source_id": e["source_id"], "station": e["id"]})
+
     lv = level_for(score)
     agree = len({"rain", "water", "forecast"} & fresh)
-    confidence = "high" if agree >= 3 and dn else "medium" if agree >= 2 else "low"
+    confidence = "high" if (agree >= 3 and (dn or off)) or (agree >= 2 and off) else "medium" if agree >= 2 else "low"
     notes = []
     if "water" not in fresh:
         notes.append("ไม่มีสถานีวัดระดับน้ำที่ใช้งานได้ในเขตนี้")
     if not ev["confirmed"]:
-        notes.append("ยังไม่มีการยืนยันผลกระทบด้วย CCTV/ดาวเทียม")
+        notes.append("ยังไม่มีรายงานยืนยันจากกรมทางหลวง/iTIC ในเขตนี้ — ดูกล้อง CCTV ใกล้เคียงประกอบ")
     return {
         "id": d["id"], "name": d["name"], "name_en": d["name_en"], "province": d["province"],
         "lat": d["lat"], "lon": d["lon"], "score": score,
@@ -742,9 +832,11 @@ def main():
             deduped.append(n)
     gdacs = fetch_gdacs()
     cameras = fetch_cameras(districts)
+    events = fetch_events(districts)
 
     gauges = canals + rivers
-    assessed = [assess(d, rain, gauges, forecast, deduped) for d in districts]
+    recent = [n for n in deduped if age_h(datetime.fromisoformat(n["time"])) <= NEWS_SCORE_H]
+    assessed = [assess(d, rain, gauges, forecast, recent, events) for d in districts]
     order = {r[1]: i for i, r in enumerate(LEVELS)}
     assessed.sort(key=lambda z: (-order[z["level"]], -z["score"], z["name"]))
     names = {d["id"]: d["name"] for d in districts}
@@ -756,17 +848,18 @@ def main():
         "method": {
             "levels": {r[1]: f"score >= {r[0]}" for r in LEVELS},
             "stale_hours": STALE_HOURS, "nearby_km": NEARBY_KM, "rise_m": RISE_M,
-            "news_max_age_h": NEWS_MAX_AGE_H,
+            "news_max_age_h": NEWS_MAX_AGE_H, "news_score_h": NEWS_SCORE_H,
             "disclaimer": "ระบบทดลอง ใช้กฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ",
         },
         "districts": assessed,
         "canals": summarize_canals(gauges, deduped, names),
         "stations": {"canal": canals, "river": rivers, "rain": rain},
         "river": river,
-        "news": deduped[:80],
+        "news": deduped[:200],
         "news_filtered": rejected,
         "official": gdacs,
         "cameras": cameras,
+        "events": events,
         "sources": list(sources.values()),
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

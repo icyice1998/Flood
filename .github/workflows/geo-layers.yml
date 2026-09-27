@@ -1,0 +1,42 @@
+name: Build map layers
+
+# Rebuilds data/canals.geojson and data/roads.geojson from OpenStreetMap.
+# Geometry changes rarely, so this runs monthly or on demand.
+on:
+  schedule:
+    - cron: '23 3 1 * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - build_geo.py
+      - .github/workflows/geo-layers.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build canal and road layers
+        run: python build_geo.py
+
+      - name: Commit layers
+        run: |
+          git config user.name "floodwatcher-bot"
+          git config user.email "action@github.com"
+          git add data/canals.geojson data/roads.geojson
+          git diff --cached --quiet && exit 0
+          git commit -m "map layers: rebuild canals and roads from OpenStreetMap [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

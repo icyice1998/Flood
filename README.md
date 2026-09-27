@@ -49,6 +49,23 @@ is never sent anywhere. It needs HTTPS (GitHub Pages provides it) and the
 viewer's permission; on later visits tracking resumes only if permission was
 already granted.
 
+## Canals and road incidents
+
+- **Canal lines** come from OpenStreetMap (`data/canals.geojson`, built by
+  `build_geo.py` in the *Build map layers* workflow, monthly or on demand) and
+  are coloured by the canal's gauge status. Tapping a canal in the list
+  highlights its whole line and gauges. The list filters by status and district.
+- **Road incidents** come from the Longdo Traffic event feed
+  (`event.longdo.com/feed/json`): flood, traffic-jam and road-closed reports
+  from the Department of Highways, iTIC staff and the public. Colour: red =
+  impassable / small cars should not pass / traffic jam / depth ≥30 cm, or a
+  jam report within 300 m; orange = flooding; yellow = jam only; green =
+  receding. Roads without reports are not coloured. Only the stretch of the
+  same-named road within 300 m of a report is highlighted (`data/roads.geojson`).
+- Department of Highways and iTIC staff reports count as **confirmed** evidence
+  for the district (+2, or +3 for three or more); public reports count as
+  reported (+1 for two or more when there is no staff report).
+
 ## Live CCTV
 
 The camera layer uses the camera list published by Longdo Traffic

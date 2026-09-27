@@ -1,6 +1,8 @@
 (() => {
   const DATA_URL = "data/latest.json";
   const DISTRICTS_URL = "data/districts.geojson";
+  const CANALS_URL = "data/canals.geojson";
+  const ROADS_URL = "data/roads.geojson";
   const REFRESH_MS = 5 * 60 * 1000;
   const STALE_MIN = 45;
 
@@ -14,10 +16,17 @@
     overbank: { th: "ล้นตลิ่ง", hex: "#c62828" },
     critical: { th: "เกินวิกฤต", hex: "#e46c0a" },
     warning: { th: "เกินเฝ้าระวัง", hex: "#d9a400" },
-    normal: { th: "ปกติ", hex: "#2e9d5b" },
+    normal: { th: "ปกติ", hex: "#1e88e5" },
     unknown: { th: "ไม่มีข้อมูล", hex: "#8a94a0" },
   };
   const CONF = { high: "สูง", medium: "ปานกลาง", low: "ต่ำ" };
+  const ROADC = {
+    red: { th: "ผ่านยาก/รถติดมาก", hex: "#c62828", rank: 3 },
+    orange: { th: "น้ำท่วมขัง", hex: "#e46c0a", rank: 2 },
+    yellow: { th: "รถติด", hex: "#d9a400", rank: 1 },
+    green: { th: "น้ำลด/ผ่านได้", hex: "#2e9d5b", rank: 0 },
+  };
+  const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#1e88e5" };
   const CAT = { rising: "น้ำเพิ่ม", flooding: "น้ำท่วม", warning: "เตือนภัย", rain: "ฝนหนัก" };
   const EVIDENCE = [
     ["measured", "ตรวจวัดแล้ว"],
@@ -25,11 +34,6 @@
     ["reported", "รายงานจากข่าว/โซเชียล (รอยืนยัน)"],
     ["confirmed", "ยืนยันผลกระทบแล้ว"],
   ];
-  const FILTER_REASON = {
-    "opinion/emotion": "ความเห็น/อารมณ์", "question/exclamation": "พาดหัวคำถาม/อุทาน",
-    "official activity/politics": "การประชุม/การเมือง", "receding/relief": "น้ำลด/แจกของ",
-    "not about rising water/flooding": "ไม่เกี่ยวกับน้ำเพิ่ม/ท่วม", "rain only, no impact": "พยากรณ์ฝนอย่างเดียว",
-  };
   const LINKS = [
     ["ThaiWater — ฝน ระดับน้ำ เขื่อน ทะเล", "https://www.thaiwater.net/"],
     ["เรดาร์ฝน กรมอุตุนิยมวิทยา", "https://weather.tmd.go.th/composite/index_composite.html"],
@@ -65,7 +69,7 @@
     return null;
   };
 
-  let DATA = null, GEO = null;
+  let DATA = null, GEO = null, CANAL_GEO = null, ROAD_GEO = null;
   const byId = {};
   const districtLayers = {};
 
@@ -85,19 +89,32 @@
     highlight: L.layerGroup().addTo(map),
     me: L.layerGroup().addTo(map),
     cctv: L.layerGroup().addTo(map),
+    canalLines: L.layerGroup().addTo(map),
+    roadLines: L.layerGroup().addTo(map),
+    events: L.layerGroup().addTo(map),
+    news: L.layerGroup().addTo(map),
   };
+  map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
     "ระดับน้ำคลอง (กทม.)": layers.canal,
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
+    "แนวคลองและแม่น้ำ (ฟ้า = ไม่ท่วม)": layers.canalLines,
+    "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
+    "ถนนที่มีรายงาน": layers.roadLines,
+    "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
 
   $("#legend").innerHTML = `<button type="button" class="ltoggle" aria-expanded="true">สัญลักษณ์</button><div class="lbody">` +
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
-    `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}</div>`;
+    `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
+    `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
+    `<b>แนวคลอง / แม่น้ำ</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>คลอง ไม่ท่วม</div>` +
+    `<div><i class="ln thick" style="background:${CANAL_COLOR.normal}"></i>แม่น้ำ ไม่ท่วม</div>` +
+    `<div><i class="ln" style="background:${CANAL_COLOR.warning}"></i><i class="ln" style="background:${CANAL_COLOR.critical};margin-left:-3px"></i><i class="ln" style="background:${CANAL_COLOR.overbank};margin-left:-3px"></i>ช่วง 1.5 กม. รอบจุดวัดที่น้ำสูง → ล้นตลิ่ง</div></div>`;
   const legendToggle = $("#legend .ltoggle");
   const setLegend = (open) => { $("#legend").classList.toggle("closed", !open); legendToggle.setAttribute("aria-expanded", String(open)); };
   legendToggle.addEventListener("click", () => setLegend($("#legend").classList.contains("closed")));
@@ -106,6 +123,9 @@
   function drawMap(d) {
     ["districts", "canal", "river", "rain", "highlight"].forEach((k) => layers[k].clearLayers());
     drawCameras(d.cameras || []);
+    drawCanalLines(d);
+    drawEvents(filteredEvents());
+    drawNewsPins(filteredNews());
     if (GEO) {
       L.geoJSON(GEO, {
         style: (f) => {
@@ -263,6 +283,187 @@
     if (b) { e.preventDefault(); openCamera(b.dataset.cam); }
   });
 
+  // ------------------------------------------------------------- time/topic filters (lists and map)
+  const minsAgo = (t) => (Date.now() - new Date(t)) / 60000;
+  // Read a filter control; tolerate a cached older page that lacks it
+  const val = (sel, dflt = "") => { const el = $(sel); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : dflt; };
+  const newsCats = new Set();
+  let newsWin = "1440";
+
+  function filteredEvents() {
+    if (!DATA) return [];
+    const q = val("#rq");
+    const col = val("#rcolor");
+    const off = val("#rofficial", false);
+    const win = val("#rtime", "active");
+    return (DATA.events || []).filter((e) =>
+      (win === "active" ? new Date(e.stop) >= Date.now() : (win === "0" || minsAgo(e.start) <= +win)) &&
+      (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
+      (!col || e.color === col) && (!off || e.official));
+  }
+
+  function filteredNews() {
+    if (!DATA) return [];
+    const q = val("#nq");
+    const win = +val("#ntime", newsWin);
+    return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
+      (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
+      (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
+  }
+
+  // one pin per district, with the number of matching headlines
+  function drawNewsPins(news) {
+    layers.news.clearLayers();
+    const byDist = new Map();
+    news.forEach((n) => n.districts.forEach((d) => { if (!byDist.has(d)) byDist.set(d, []); byDist.get(d).push(n); }));
+    for (const [d, items] of byDist) {
+      const z = byId[d];
+      if (!z) continue;
+      L.marker([z.lat, z.lon], { zIndexOffset: 400, title: `ข่าว ${d}`, icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
+        html: `<div class="news-pin">📰 ${items.length}</div>` }) })
+        .bindPopup(`<b>ข่าวในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
+          `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a><br><small>${fmtTime(n.time)}${n.via && n.via[d] ? " · จับคู่จาก " + esc(n.via[d]) : ""}</small></li>`).join("")}</ul>`, { maxWidth: 320 })
+        .addTo(layers.news);
+    }
+  }
+
+  // ------------------------------------------------------------- canal lines & road incidents
+  const canalLayerByName = {};
+  const statusOfCanal = (name) => (DATA.canals.find((c) => c.name === name) || {}).status || "unknown";
+
+  // Waterways are blue; only the stretch around a gauge above its warning level takes that gauge's colour
+  const ALERT_KM = 1.5;
+  const ALERT_RANK = { warning: 1, critical: 2, overbank: 3 };
+  const waterWeight = (river, alert) => {
+    const z = map.getZoom();
+    const base = z <= 10 ? 1.2 : z <= 11 ? 1.6 : z <= 12 ? 2.2 : z <= 13 ? 3 : 4;
+    return base * (river ? 2 : 1) + (alert ? 3 : 0);
+  };
+  function nearRuns(lines, g) {
+    const kx = 111.32 * Math.cos(g.lat * Math.PI / 180), ky = 110.57;
+    const near = ([x, y]) => Math.hypot((x - g.lon) * kx, (y - g.lat) * ky) <= ALERT_KM;
+    const runs = [];
+    for (const ln of lines) {
+      let run = null;
+      for (let i = 0; i < ln.length - 1; i++) {
+        if (near(ln[i]) || near(ln[i + 1])) {
+          if (!run) { run = [ln[i]]; runs.push(run); }
+          run.push(ln[i + 1]);
+        } else run = null;
+      }
+    }
+    return runs.map((r) => r.map(([x, y]) => [y, x]));
+  }
+
+  function drawCanalLines() {
+    layers.canalLines.clearLayers();
+    Object.keys(canalLayerByName).forEach((k) => delete canalLayerByName[k]);
+    if (!CANAL_GEO) return;
+    const alertGauges = [...DATA.stations.canal, ...DATA.stations.river]
+      .filter((g) => ALERT_RANK[g.status] && g.canal)
+      .sort((a, b) => ALERT_RANK[a.status] - ALERT_RANK[b.status]);
+    L.geoJSON(CANAL_GEO, {
+      pane: "water",
+      style: (f) => ({ color: CANAL_COLOR.normal, weight: waterWeight(f.properties.name.startsWith("แม่น้ำ"), false), opacity: 0.9, lineCap: "round" }),
+      onEachFeature: (f, lyr) => {
+        const c = DATA.canals.find((x) => x.name === f.properties.name);
+        canalLayerByName[f.properties.name] = lyr;
+        lyr.bindTooltip(`${esc(f.properties.name)}${c ? " · " + STATUS[c.status].th : ""}`, { sticky: true });
+        lyr.on("click", () => { selectTab("canals"); $("#cq").value = f.properties.name; $("#cstatus").value = ""; $("#cdist").value = ""; renderCanals(); focusCanal(f.properties.name, false); });
+      },
+    }).addTo(layers.canalLines);
+    // alert stretches on top, worst drawn last
+    for (const g of alertGauges) {
+      const lyr = canalLayerByName[g.canal];
+      if (!lyr) continue;
+      const geom = lyr.feature.geometry;
+      const runs = nearRuns(geom.type === "LineString" ? [geom.coordinates] : geom.coordinates, g);
+      if (!runs.length) continue;
+      L.polyline(runs, { pane: "water", color: CANAL_COLOR[g.status], weight: waterWeight(g.canal.startsWith("แม่น้ำ"), true), opacity: 0.95, lineCap: "round", alert: true, river: g.canal.startsWith("แม่น้ำ") })
+        .bindTooltip(`${esc(g.canal)} · ${esc(g.name)} · ${STATUS[g.status].th}`, { sticky: true })
+        .on("click", () => lyr.fire("click"))
+        .addTo(layers.canalLines);
+    }
+  }
+  map.on("zoomend", () => layers.canalLines.eachLayer(function restyle(l) {
+    if (l.eachLayer && !l.feature) { l.eachLayer(restyle); return; }
+    const river = l.options.alert ? l.options.river : (l.feature?.properties.name || "").startsWith("แม่น้ำ");
+    l.setStyle?.({ weight: waterWeight(river, !!l.options.alert) });
+  }));
+
+  // distance (km) from point to a polyline, equirectangular approximation
+  function kmToLine(lat, lon, coords) {
+    const kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.57;
+    let best = Infinity;
+    for (let i = 1; i < coords.length; i++) {
+      const [ax, ay] = coords[i - 1], [bx, by] = coords[i];
+      const x1 = (ax - lon) * kx, y1 = (ay - lat) * ky, x2 = (bx - lon) * kx, y2 = (by - lat) * ky;
+      const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+      const t = L2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / L2)) : 0;
+      best = Math.min(best, Math.hypot(x1 + t * dx, y1 + t * dy));
+    }
+    return best;
+  }
+  const roadMatch = (evKey, roadKey) => evKey && roadKey && (evKey.includes(roadKey) || roadKey.includes(evKey.split(/\d/)[0]));
+
+  const eventMarkers = {};
+  function drawEvents(events) {
+    layers.events.clearLayers();
+    layers.roadLines.clearLayers();
+    Object.keys(eventMarkers).forEach((k) => delete eventMarkers[k]);
+    events.forEach((e) => {
+      const c = ROADC[e.color];
+      const size = e.official ? 18 : 14;
+      const m = L.marker([e.lat, e.lon], { zIndexOffset: 300 + c.rank * 10, title: e.title, icon: L.divIcon({ className: "", iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+        html: `<div class="ev-pin" style="background:${c.hex};width:${size}px;height:${size}px;font-size:${size - 6}px">!</div>` }) })
+        .bindPopup(`<b>${esc(e.title)}</b> <span class="pill" style="background:${c.hex}">${c.th}</span><br>${esc(e.text)}<br>
+          ${e.depth_cm ? `ความลึกที่รายงาน ~${e.depth_cm} ซม.<br>` : ""}<small>${fmtTime(e.start)} – ${fmtTime(e.stop)} · ${esc(e.source)}${e.district ? " · เขต" + esc(e.district) : ""}</small>`);
+      eventMarkers[e.id] = m;
+      m.addTo(layers.events);
+    });
+    if (!ROAD_GEO) return;
+    // colour only the road ways near a report on the same road (within 300 m), worst colour wins
+    const worst = new Map();
+    for (const e of events) {
+      if (!e.road_key) continue;
+      for (const f of ROAD_GEO.features) {
+        if (!roadMatch(e.road_key, f.properties.key)) continue;
+        if (kmToLine(e.lat, e.lon, f.geometry.coordinates) > 0.3) continue;
+        const prev = worst.get(f);
+        if (!prev || ROADC[e.color].rank > ROADC[prev.color].rank) worst.set(f, e);
+      }
+    }
+    for (const [f, e] of worst) {
+      const news = DATA.news.filter((n) => n.title.includes(f.properties.key.slice(0, 6))).slice(0, 3);
+      L.geoJSON(f, { style: { color: ROADC[e.color].hex, weight: 7, opacity: 0.75 } })
+        .bindPopup(`<b>${esc(f.properties.name)}</b> <span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span><br>
+          <small>รายงานล่าสุดใกล้ช่วงนี้: ${esc(e.title)} · ${fmtTime(e.start)} · ${esc(e.source)}</small>
+          ${news.length ? `<br><b>ข่าวที่กล่าวถึงถนนนี้</b><ul>${news.map((n) => `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a></li>`).join("")}</ul>` : ""}`)
+        .addTo(layers.roadLines);
+    }
+  }
+
+  function renderRoads() {
+    if (!$("#rlist")) { drawEvents(filteredEvents()); return; }
+    const rank = (e) => -ROADC[e.color].rank;
+    const shown = filteredEvents();
+    drawEvents(shown);
+    const list = [...shown].sort((a, b) => rank(a) - rank(b) || (a.start < b.start ? 1 : -1));
+    const n = (c) => shown.filter((e) => e.color === c).length;
+    $("#rcount").innerHTML = `${list.length} รายงาน · <b style="color:${ROADC.red.hex}">แดง ${n("red")}</b> · <b style="color:${ROADC.orange.hex}">ส้ม ${n("orange")}</b> · เหลือง ${n("yellow")} · เขียว ${n("green")} · แตะเพื่อดูบนแผนที่`;
+    $("#rlist").innerHTML = list.slice(0, 200).map((e) => `<li class="ev" data-ev="${esc(e.id)}"><span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span>
+      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}</b>
+      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
+    document.querySelectorAll("#rlist li[data-ev]").forEach((li) => li.addEventListener("click", () => {
+      const m = eventMarkers[li.dataset.ev];
+      if (!m) return;
+      if (!map.hasLayer(layers.events)) layers.events.addTo(map);
+      map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+      m.openPopup();
+      if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    }));
+  }
+
   // ------------------------------------------------------------- panel
   function evidenceList(items) {
     if (!items.length) return `<p class="empty">ไม่มี</p>`;
@@ -303,43 +504,80 @@
   }
 
   function renderCanals() {
-    const q = $("#cq").value.trim();
-    const only = $("#conly").checked;
+    const q = val("#cq");
+    const st = val("#cstatus");
+    const dist = val("#cdist");
+    const sel = $("#cdist");
+    if (sel && sel.options.length <= 1) {
+      const ds = [...new Set(DATA.canals.flatMap((c) => c.districts))].sort((a, b) => a.localeCompare(b, "th"));
+      sel.insertAdjacentHTML("beforeend", ds.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join(""));
+    }
     const list = DATA.canals.filter((c) => (!q || c.name.includes(q) || c.districts.some((d) => d.includes(q))) &&
-      (!only || ["overbank", "critical", "warning"].includes(c.status)));
-    $("#ccount").textContent = `${list.length} คลอง/แม่น้ำ · แตะแถวเพื่อดูจุดวัดบนแผนที่`;
+      (!st || (st === "alert" ? ["overbank", "critical", "warning"].includes(c.status) : c.status === st)) &&
+      (!dist || c.districts.includes(dist)));
+    $("#ccount").textContent = `${list.length} คลอง/แม่น้ำ · แตะแถวเพื่อดูเส้นคลองและจุดวัดบนแผนที่`;
     $("#clist").innerHTML = `<table class="canals"><tr><th>คลอง</th><th>สถานะ</th><th>จุดที่หนักสุด</th></tr>
       ${list.map((c) => {
         const w = c.worst;
         const wtxt = w ? `${esc(w.name)}<br><small>${num(w.value)} ม.${w.bank != null ? " / ตลิ่ง " + num(w.bank) : ""}${w.bank_percent != null ? " (" + w.bank_percent.toFixed(0) + "%)" : ""} · ${fmtTime(w.time)}</small>` : "–";
         const counts = [c.overbank && `ล้น ${c.overbank}`, c.critical && `วิกฤต ${c.critical}`, c.warning && `เฝ้าระวัง ${c.warning}`].filter(Boolean).join(" · ");
-        return `<tr data-canal="${esc(c.name)}"><td><b>${esc(c.name)}</b><br><small>${c.districts.map(esc).join(", ")}</small>${c.news ? `<br><small class="warn">ข่าว ${c.news}</small>` : ""}</td>
+        return `<tr data-canal="${esc(c.name)}"><td><b>${esc(c.name)}</b>${canalLayerByName[c.name] ? "" : ' <small title="ไม่พบเส้นคลองใน OpenStreetMap">(ไม่มีเส้น)</small>'}<br><small>${c.districts.map(esc).join(", ")}</small>${c.news ? `<br><small class="warn">ข่าว ${c.news}</small>` : ""}</td>
           <td><span class="pill" style="background:${STATUS[c.status].hex}">${STATUS[c.status].th}</span><br><small>จุดวัด ${c.reporting}/${c.gauges}${counts ? "<br>" + counts : ""}</small>${c.rising ? `<br><small class="bad">▲ ขึ้น ${c.rising} จุด</small>` : ""}</td>
           <td>${wtxt}</td></tr>`;
       }).join("")}</table>`;
     document.querySelectorAll("#clist tr[data-canal]").forEach((tr) => tr.addEventListener("click", () => focusCanal(tr.dataset.canal)));
   }
 
-  function focusCanal(name) {
+  function focusCanal(name, move = true) {
     layers.highlight.clearLayers();
     const gs = [...DATA.stations.canal, ...DATA.stations.river].filter((g) => g.canal === name);
-    if (!gs.length) return;
+    const lineLyr = canalLayerByName[name];
+    let bounds = null;
+    if (lineLyr) {
+      const glow = L.geoJSON(lineLyr.feature, { style: { color: "#0b6bcb", weight: 10, opacity: 0.35 }, interactive: false }).addTo(layers.highlight);
+      L.geoJSON(lineLyr.feature, { style: { color: CANAL_COLOR[statusOfCanal(name)], weight: 5, opacity: 1 }, interactive: false }).addTo(layers.highlight);
+      bounds = glow.getBounds();
+    }
     gs.forEach((g) => L.circleMarker([g.lat, g.lon], { radius: 11, color: "#0b6bcb", weight: 3, fill: false }).bindPopup(gaugePopup(g)).addTo(layers.highlight));
-    map.fitBounds(L.latLngBounds(gs.map((g) => [g.lat, g.lon])).pad(0.3), { maxZoom: 14 });
-    if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    if (gs.length) {
+      const gb = L.latLngBounds(gs.map((g) => [g.lat, g.lon]));
+      bounds = bounds ? bounds.extend(gb) : gb;
+    }
+    if (!bounds) return;
+    if (move) map.fitBounds(bounds.pad(0.15), { maxZoom: 15 });
+    if (move && window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function syncNewsbar(list) {
+    const win = val("#ntime", newsWin);
+    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === win)));
+    const pinned = list.filter((n) => n.districts.length).length;
+    if ($("#nbcount")) $("#nbcount").textContent = `${pinned} ข่าว`;
   }
 
   function renderNews() {
     const d = DATA;
+    const list = filteredNews();
+    drawNewsPins(list);
+    syncNewsbar(list);
+    if (!$("#nlist")) return;
     const official = (d.official || []).map((o) =>
       `<li><span class="tag official">GDACS ${esc(o.level)}</span><a href="${safeUrl(o.link)}" target="_blank" rel="noopener">${esc(o.title)}</a></li>`).join("");
-    const filtered = Object.entries(d.news_filtered || {}).map(([k, n]) => `${FILTER_REASON[k] || k} ${n}`).join(" · ");
-    $("#tab-news").innerHTML = `<p class="empty">แสดงเฉพาะข่าวน้ำเพิ่ม/น้ำท่วม/ประกาศเตือน ภายใน ${d.method.news_max_age_h} ชม. · คัดออก: ${esc(filtered) || "–"}</p>
-      <ul class="news">${official}${d.news.map((n) => `
+    const pinned = list.filter((n) => n.districts.length).length;
+    $("#ncount").textContent = `${list.length} ข่าว · ปักหมุดบนแผนที่ ${pinned} ข่าว`;
+    $("#nlist").innerHTML = official + (list.map((n) => `
       <li>${n.kind === "social" ? `<span class="tag social">โซเชียล</span>` : ""}${n.categories.map((c) => `<span class="tag c-${c}">${CAT[c] || c}</span>`).join("")}
         <a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a>
-        <span class="m">${fmtTime(n.time)} · ${esc(n.source)}${n.districts.length ? " · เขต: " + n.districts.map(esc).join(", ") : ""}${n.canals.length ? " · " + n.canals.map(esc).join(", ") : ""}</span></li>`).join("")}</ul>
-      <p class="empty">ข่าว/โพสต์ถูกจับคู่กับเขตจากชื่อเขต คลอง ถนน หรือสถานที่ — เป็นหลักฐาน "รอยืนยัน" เท่านั้น</p>`;
+        <span class="m">${fmtTime(n.time)} · ${esc(n.source)}${n.districts.length ? ` · <button type="button" class="linkish" data-news-dist="${esc(n.districts[0])}">เขต: ${n.districts.map(esc).join(", ")}</button>` : ""}${n.canals.length ? " · " + n.canals.map(esc).join(", ") : ""}</span></li>`).join("")
+      || `<li class="empty">ไม่มีข่าวในช่วงเวลา/หัวข้อที่เลือก</li>`);
+    document.querySelectorAll("#nlist [data-news-dist]").forEach((b) => b.addEventListener("click", () => {
+      const z = byId[b.dataset.newsDist];
+      if (!z) return;
+      if (!map.hasLayer(layers.news)) layers.news.addTo(map);
+      map.setView([z.lat, z.lon], Math.max(map.getZoom(), 13));
+      layers.news.eachLayer((m) => { if (m.getLatLng().equals([z.lat, z.lon])) m.openPopup(); });
+      if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
+    }));
   }
 
   function renderSources() {
@@ -391,8 +629,27 @@
     pref("fw-tab", name);
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
-  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s).addEventListener("input", renderDistricts));
-  ["#cq", "#conly"].forEach((s) => $(s).addEventListener("input", renderCanals));
+  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", renderDistricts));
+  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
+  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
+  ["#nq", "#ntime"].forEach((s) => $(s)?.addEventListener("input", renderNews));
+  document.querySelectorAll("#ncats button, #mncats button").forEach((b) => b.addEventListener("click", () => {
+    const c = b.dataset.cat;
+    if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
+    document.querySelectorAll(`#ncats button[data-cat="${c}"], #mncats button[data-cat="${c}"]`).forEach((x) => x.setAttribute("aria-pressed", String(newsCats.has(c))));
+    renderNews();
+  }));
+  // map news bar: time segments mirror the news-tab dropdown
+  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => {
+    if ($("#ntime")) $("#ntime").value = b.dataset.win;
+    newsWin = b.dataset.win;
+    renderNews();
+  }));
+  const nbToggle = $("#nbtoggle");
+  const setNewsbar = (open) => { $("#newsbar")?.classList.toggle("closed", !open); nbToggle?.setAttribute("aria-expanded", String(open)); };
+  nbToggle?.addEventListener("click", () => setNewsbar($("#newsbar").classList.contains("closed")));
+  setNewsbar(window.innerWidth >= 800);
+  map.on("overlayadd overlayremove", (e) => { if (e.layer === layers.news) $("#newsbar").hidden = e.type === "overlayremove"; });
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)
@@ -518,9 +775,22 @@
   }
 
   // ------------------------------------------------------------- load
+  // Static line layers are optional and large: load in the background, redraw when they arrive
+  let linesLoading = null;
+  function loadLines() {
+    if (linesLoading) return;
+    const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    linesLoading = Promise.all([get(CANALS_URL), get(ROADS_URL)]).then(([c, r]) => {
+      CANAL_GEO = c; ROAD_GEO = r;
+      if (!DATA) return;
+      try { drawCanalLines(); renderRoads(); } catch (err) { console.error("lines", err); }
+    });
+  }
+
   async function load() {
     try {
       if (!GEO) GEO = await (await fetch(DISTRICTS_URL)).json();
+      loadLines();
       const r = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const next = await r.json();
@@ -529,7 +799,9 @@
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);
-      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources(); renderMine();
+      for (const fn of [renderSummary, renderDistricts, renderCanals, renderNews, renderSources, renderMine, renderRoads]) {
+        try { fn(); } catch (err) { console.error(fn.name, err); }
+      }
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");
