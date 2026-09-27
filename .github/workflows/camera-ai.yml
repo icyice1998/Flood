@@ -49,7 +49,7 @@ jobs:
       - name: Install CPU-only torch, CLIP and YOLO
         run: |
           pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -q ultralytics open_clip_torch pillow numpy
+          pip install -q ultralytics open_clip_torch pillow numpy imageio-ffmpeg
           mkdir -p ~/.cache/floodwatcher
 
       - name: Scan every 15 minutes
