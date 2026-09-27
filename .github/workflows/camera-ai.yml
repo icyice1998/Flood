@@ -1,0 +1,85 @@
+name: Camera AI scan
+
+# Grabs one frame per Greater Bangkok traffic camera every 15 minutes and
+# classifies water on the road (CLIP) and vehicles (YOLO). Like the data loop,
+# each run on main loops for ~5.5 h and then dispatches the next run; the cron
+# is only a backup. A push to another branch runs a single scan for preview.
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - scan_cameras.py
+      - .github/workflows/camera-ai.yml
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: camera-ai-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  INTERVAL_SEC: 900
+  LOOP_SEC: ${{ github.ref_name == 'main' && '19800' || '0' }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache models and packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/huggingface
+            ~/.cache/floodwatcher
+          key: camera-ai-v1
+
+      - name: Install CPU-only torch, CLIP and YOLO
+        run: |
+          pip install -q torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -q ultralytics open_clip_torch pillow numpy
+          mkdir -p ~/.cache/floodwatcher
+
+      - name: Scan every 15 minutes
+        run: |
+          git config user.name "floodwatcher-bot"
+          git config user.email "action@github.com"
+          end=$((SECONDS + LOOP_SEC))
+          while :; do
+            started=$SECONDS
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" || git rebase --abort || true
+            if python scan_cameras.py; then
+              git add data/cameras_ai.json data/cameras_ai_history.json
+              if ! git diff --cached --quiet; then
+                git commit -q -m "camera ai: scan $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
+                for i in 1 2 3; do
+                  git pull -q --rebase -X theirs origin "${GITHUB_REF_NAME}" && git push -q && break
+                  sleep $((i * 5))
+                done
+              fi
+            else
+              echo "::warning::camera scan failed at $(date -u +%H:%MZ); keeping previous results"
+            fi
+            left=$((INTERVAL_SEC - (SECONDS - started)))
+            [ "$left" -lt 0 ] && left=0
+            [ $((SECONDS + left)) -ge "$end" ] && break
+            sleep "$left"
+          done
+
+      - name: Start the next run
+        if: always() && github.ref_name == 'main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run camera-ai.yml --ref main -R "${GITHUB_REPOSITORY}"
