@@ -282,14 +282,16 @@
 
   // ------------------------------------------------------------- time/topic filters (lists and map)
   const minsAgo = (t) => (Date.now() - new Date(t)) / 60000;
+  // Read a filter control; tolerate a cached older page that lacks it
+  const val = (sel, dflt = "") => { const el = $(sel); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : dflt; };
   const newsCats = new Set();
 
   function filteredEvents() {
     if (!DATA) return [];
-    const q = $("#rq").value.trim();
-    const col = $("#rcolor").value;
-    const off = $("#rofficial").checked;
-    const win = $("#rtime").value;
+    const q = val("#rq");
+    const col = val("#rcolor");
+    const off = val("#rofficial", false);
+    const win = val("#rtime", "active");
     return (DATA.events || []).filter((e) =>
       (win === "active" ? new Date(e.stop) >= Date.now() : (win === "0" || minsAgo(e.start) <= +win)) &&
       (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
@@ -298,8 +300,8 @@
 
   function filteredNews() {
     if (!DATA) return [];
-    const q = $("#nq").value.trim();
-    const win = +$("#ntime").value;
+    const q = val("#nq");
+    const win = +val("#ntime", "1440");
     return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
       (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
       (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
@@ -396,6 +398,7 @@
   }
 
   function renderRoads() {
+    if (!$("#rlist")) { drawEvents(filteredEvents()); return; }
     const rank = (e) => -ROADC[e.color].rank;
     const shown = filteredEvents();
     drawEvents(shown);
@@ -455,11 +458,11 @@
   }
 
   function renderCanals() {
-    const q = $("#cq").value.trim();
-    const st = $("#cstatus").value;
-    const dist = $("#cdist").value;
+    const q = val("#cq");
+    const st = val("#cstatus");
+    const dist = val("#cdist");
     const sel = $("#cdist");
-    if (sel.options.length <= 1) {
+    if (sel && sel.options.length <= 1) {
       const ds = [...new Set(DATA.canals.flatMap((c) => c.districts))].sort((a, b) => a.localeCompare(b, "th"));
       sel.insertAdjacentHTML("beforeend", ds.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join(""));
     }
@@ -501,6 +504,7 @@
 
   function renderNews() {
     const d = DATA;
+    if (!$("#nlist")) { drawNewsPins(filteredNews()); return; }
     const list = filteredNews();
     drawNewsPins(list);
     const official = (d.official || []).map((o) =>
@@ -571,10 +575,10 @@
     pref("fw-tab", name);
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
-  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s).addEventListener("input", renderDistricts));
-  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s).addEventListener("input", renderCanals));
-  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s).addEventListener("input", renderRoads));
-  ["#nq", "#ntime"].forEach((s) => $(s).addEventListener("input", renderNews));
+  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", renderDistricts));
+  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
+  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
+  ["#nq", "#ntime"].forEach((s) => $(s)?.addEventListener("input", renderNews));
   document.querySelectorAll("#ncats button").forEach((b) => b.addEventListener("click", () => {
     const c = b.dataset.cat;
     if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
@@ -720,7 +724,9 @@
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);
-      renderSummary(); renderDistricts(); renderCanals(); renderNews(); renderSources(); renderMine(); renderRoads();
+      for (const fn of [renderSummary, renderDistricts, renderCanals, renderNews, renderSources, renderMine, renderRoads]) {
+        try { fn(); } catch (err) { console.error(fn.name, err); }
+      }
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");
