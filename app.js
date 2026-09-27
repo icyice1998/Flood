@@ -75,6 +75,11 @@
 
   // ------------------------------------------------------------- map
   const map = L.map("map", { zoomControl: true }).setView([13.76, 100.58], 10);
+  // Road incident pins crowd the city view: show them from this zoom in (road colours stay visible)
+  const EV_MIN_ZOOM = 13;
+  const syncEvZoom = () => map.getContainer().classList.toggle("ev-hidden", map.getZoom() < EV_MIN_ZOOM);
+  map.on("zoomend", syncEvZoom);
+  syncEvZoom();
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer · กล้อง: Longdo Traffic, iTIC, กรมทางหลวง',
@@ -101,7 +106,7 @@
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
     "แนวคลองและแม่น้ำ (ฟ้า = ไม่ท่วม)": layers.canalLines,
-    "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
+    "เหตุบนถนน (กรมทางหลวง/iTIC · ซูมเข้าเพื่อดูหมุด)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
     "กล้อง CCTV (ภาพสด)": layers.cctv,

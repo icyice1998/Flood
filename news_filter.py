@@ -40,10 +40,21 @@ OFFICIAL_ACTIVITY = re.compile(
     r"ประชุม|ถกด่วน|สั่งการ|ลงพื้นที่|ตรวจเยี่ยม|ติดตามสถานการณ์|นายกฯ|นายกรัฐมนตรี|รัฐมนตรี|อนุทิน|ผู้ว่าฯ\S{0,10}(?:ลงพื้นที่|ตรวจ)|"
     r"\bPM\b|prime minister|minister|governor (?:visits|inspects)|meeting",
     re.I)
+# Holidays, business, services, politics, tourism, foreign and photo pieces: flood-adjacent, not flood reports
+OFFTOPIC = re.compile(
+    r"วันหยุด|หยุดราชการ|\bWFH\b|ทำงานที่บ้าน|เปิดทำการ|ปิดสาขา|ทางด่วน\S{0,6}ฟรี|ฟรีทางด่วน|ผนึก|การันตี|สินค้า|ราคา|นวัตกรรม|"
+    r"ถอดรหัส|ประเด็นร้อน|สื่อนอก|ต่างชาติ|สถานทูต|ท่องเที่ยว|โรงแรม|ความเสียหาย|ตลาดหลักทรัพย์|หุ้น|ฟอกไต|ล้างไต|บริการต่อเนื่อง|"
+    r"เล่าความ|ประมวลภาพ|ภาพชุด|ครม\.|คณะรัฐมนตรี|รัฐบาล|รมว\.|สส\.|ส\.ส\.|ผบ\.ตร|นายก(?:ฯ|รัฐมนตรี|\s)|แจกเสบียง|แจกอาหาร|โรงครัว|"
+    r"กัมพูชา|เวียดนาม|มาเลเซีย|เมียนมา|ลาว|ฟิลิปปินส์|"
+    r"holiday|work(?:ing)? from home|\btrading\b|\bstocks?\b|\bSET\b|\bbanks?\b|branches|touris[mt]|hotels?|airports?|embassy|"
+    r"photos?\b|pictures|damage|prices|supplies|cabinet|after the flood|too late|"
+    r"Cambodia|Vietnam|Malaysia|Myanmar|Laos|Philippines|Indonesia|\bBali\b",
+    re.I)
 # Water going down, clean-up, compensation, donations
 RECEDING = re.compile(
     r"ลดลง|คลี่คลาย|น้ำแห้ง|แห้งแล้ว|กลับสู่ภาวะปกติ|กลับมาสัญจร|สัญจรได้|ระบายหมดแล้ว|ฟื้นฟู|เยียวยา|ชดเชย|ล้างทำความสะอาด|"
     r"บริจาค|มอบถุงยังชีพ|ถุงยังชีพ|ระดม\S{0,10}ช่วย|ลุยช่วย|ส่งกำลัง|"
+    r"คาด.{0,12}น้ำลด|"
     r"recede|receding|subsid|clean-?up|reopen|back to normal|donat|relief fund|compensation|aftermath",
     re.I)
 
@@ -60,6 +71,8 @@ def classify(title):
         return False, [], "question/exclamation"
     if OPINION.search(t):
         return False, [], "opinion/emotion"
+    if OFFTOPIC.search(t):
+        return False, [], "off-topic (holiday/business/politics/foreign)"
     cats = [name for name, rx in (("rising", RISING), ("flooding", FLOODING), ("warning", WARNING), ("rain", RAIN))
             if rx.search(t)]
     if OFFICIAL_ACTIVITY.search(t) and "rising" not in cats:
@@ -94,6 +107,14 @@ EXAMPLES = [
     ("รัฐบาลระดมทหาร 1 หมื่นนาย ลุยช่วยน้ำท่วม - ททบ. 5", False),
     ("เห็นแล้วใจหาย! แฟลตคลองจั่นน้ำสูงถึงอก รถจมแทบมิด - Amarin", False),
     ("ใครทันใครได้! น้ำท่วมกรุงเทพ รัชดาฯ โคม่า ตุนอาหาร 7-11 เกลี้ยง - Sanook", False),
+    ("แบงก์เปิดทำการปกติ 28-29 ก.ย. พนักงานน้ำท่วมให้ WFH - LINE TODAY", False),
+    ("ครม.อนุมัติวันหยุดราชการกรณีพิเศษ 28-29 ก.ย. เหตุฝนตกหนัก–น้ำท่วมขัง - Hfocus.org", False),
+    ("Bangkok Floods Disrupt Tourism, Hotels and Airports - eTurboNews", False),
+    ("CPF ลุยสู้ภัยน้ำท่วม กทม. การันตีผลิต-ส่งมอบอาหารต่อเนื่อง - ข่าวหุ้น", False),
+    ("Flooding forces more than 2,900 families to evacuate across Cambodia - Khaosod English", False),
+    ("เคหะร่มเกล้าอ่วม น้ำท่วมสูงกว่า 1 เมตร ชาวบ้านต้องการอาหาร น้ำดื่ม ยา - Thai PBS", True),
+    ("สมุทรปราการ ประกาศเขตภัยพิบัติ น้ำท่วม 6 อำเภอ - Thai PBS", True),
+    ("Bangkok flooding forces thousands to flee homes after relentless rain - Yahoo News", True),
     ("เปิด 20 จุดน้ำท่วมกรุง รามคำแหง 43/1 สูงสุด 17.5 ซม. หลังฝนถล่มข้ามคืน - Thairath", True),
 ]
 
