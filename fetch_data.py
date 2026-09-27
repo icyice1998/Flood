@@ -18,6 +18,7 @@ import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from news_filter import classify, strip_source
@@ -481,6 +482,49 @@ def parse_rss(sid, label, url, kind, dist_rx, canal_rx, rejected):
     return out
 
 
+def fetch_cameras(districts):
+    """Traffic CCTV listed by Longdo Traffic (streams hosted by iTIC Foundation / Dept. of Highways).
+    Keeps Greater Bangkok cameras with a real stream URL and probes each HLS playlist."""
+    sid, url = "longdo-cctv", "https://traffic.longdo.com/camera.json"
+    label = "กล้อง CCTV (Longdo Traffic / iTIC / กรมทางหลวง)"
+    try:
+        data = json.loads(http_get(url, timeout=30))
+        cams = next(iter(data.values())) if isinstance(data, dict) else data
+    except Exception as e:  # noqa: BLE001
+        record(sid, label, url, False, error=str(e)[:200], kind="cctv")
+        return []
+    picked = []
+    for c in cams:
+        lat, lon = fnum(c.get("latitude")), fnum(c.get("longitude"))
+        hls = c.get("hls_url") or ""
+        if not in_bbox(lat, lon) or not hls.startswith("https://") or "X.X.X.X" in (c.get("imgurl") or ""):
+            continue
+        picked.append((c, lat, lon, hls))
+
+    def probe(item):
+        try:
+            req = urllib.request.Request(item[3], headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                return r.read(64).startswith(b"#EXTM3U")
+        except Exception:  # noqa: BLE001 - offline camera
+            return False
+
+    with ThreadPoolExecutor(max_workers=12) as ex:
+        live = list(ex.map(probe, picked))
+    out = []
+    for (c, lat, lon, hls), ok in zip(picked, live):
+        title = re.sub(r"^\([^)]*\)\s*", "", c.get("title") or "").strip()
+        out.append({
+            "id": c.get("camid"), "title": title, "lat": lat, "lon": lon,
+            "org": c.get("organization"), "hls": hls, "link": c.get("link"),
+            "district": district_of(districts, None, None, lat, lon),
+            "live": ok, "checked": NOW.isoformat(timespec="minutes"), "source_id": sid,
+        })
+    record(sid, label, url, True, len(out), NOW.isoformat(timespec="minutes"), kind="cctv",
+           extra={"live": sum(live)})
+    return out
+
+
 def fetch_gdacs():
     sid, url = "gdacs", "https://www.gdacs.org/xml/rss.xml"
     g = "{http://www.gdacs.org}"
@@ -697,6 +741,7 @@ def main():
             seen.add(key)
             deduped.append(n)
     gdacs = fetch_gdacs()
+    cameras = fetch_cameras(districts)
 
     gauges = canals + rivers
     assessed = [assess(d, rain, gauges, forecast, deduped) for d in districts]
@@ -721,6 +766,7 @@ def main():
         "news": deduped[:80],
         "news_filtered": rejected,
         "official": gdacs,
+        "cameras": cameras,
         "sources": list(sources.values()),
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

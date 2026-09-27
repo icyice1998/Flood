@@ -142,6 +142,16 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .mine .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
 .mine .row button { border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 6px; padding: 3px 10px; font-size: .85rem; }
 .mine.err { border-left-color: var(--stale); }
+.cam-pin { width: 26px; height: 26px; border-radius: 50%; background: #1b2430; color: #fff; display: grid; place-items: center;
+  font-size: 14px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); }
+.cam-pin.off { background: #8a94a0; opacity: .7; }
+.cam-pop small { color: #5d6b7a; }
+.cam-video { position: relative; margin: 6px 0; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; }
+.cam-video video { width: 100%; height: 100%; display: block; }
+.cam-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 13px; text-align: center; padding: 8px; }
+.cams { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 6px; }
+.camlink { text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 6px; padding: 4px 8px; font-size: .85rem; }
+.camlink small { color: var(--muted); }
 .leaflet-popup-content { font: 13px/1.45 "Sarabun", system-ui, sans-serif; }
 .leaflet-popup-content b { font-size: 14px; }
 

@@ -49,6 +49,18 @@ is never sent anywhere. It needs HTTPS (GitHub Pages provides it) and the
 viewer's permission; on later visits tracking resumes only if permission was
 already granted.
 
+## Live CCTV
+
+The camera layer uses the camera list published by Longdo Traffic
+(`traffic.longdo.com/camera.json`); cameras belong to the Department of
+Highways and the iTIC Foundation, which also host the HLS streams. The data job
+keeps Greater Bangkok cameras, drops placeholder entries and probes each
+playlist, so the map shows only cameras that were live at the last check.
+Video plays with hls.js (Safari/iOS natively) and loads only while a camera
+popup is open. District cards and the GPS card list cameras within 5 km, to
+help confirm flooding by eye. This is not an official open API and has no
+published terms; credit is shown on the map.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.
