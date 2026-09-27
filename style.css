@@ -133,8 +133,23 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .legend.closed .ltoggle::after { content: " ▸"; }
 .legend.closed .lbody { display: none; }
 .legend b { display: block; font-size: .72rem; color: var(--muted); }
+.newsbar {
+  position: absolute; left: 54px; top: 10px; z-index: 510; max-width: calc(100% - 120px); background: var(--surface); color: var(--text);
+  border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: .8rem; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.newsbar .nbtoggle { border: 0; background: none; color: var(--text); font-weight: 600; font-size: .82rem; padding: 0; }
+.newsbar .nbtoggle::after { content: " ▾"; }
+.newsbar.closed .nbtoggle::after { content: " ▸"; }
+.newsbar.closed .nbbody { display: none; }
+.newsbar .nbbody { margin-top: 5px; }
+.newsbar .chips { margin: 5px 0 0; gap: 4px; }
+.newsbar .chips button { padding: 2px 9px; font-size: .76rem; }
+.seg { display: flex; flex-wrap: nowrap; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: max-content; max-width: 100%; }
+.seg button { border: 0; border-right: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 3px 8px; font-size: .76rem; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .radar-ctl {
-  position: absolute; left: 54px; top: 10px; z-index: 500; background: var(--surface);
+  position: absolute; left: 54px; bottom: 90px; z-index: 500; background: var(--surface);
   border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: .8rem; display: flex; gap: 8px; align-items: center;
 }
 .locate {
@@ -174,6 +189,8 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
   .mapwrap { height: 60vh; order: -1; }
   .legend { font-size: .7rem; padding: 4px 8px; bottom: 44px; }
   .locate { bottom: 44px; }
+  .newsbar { max-width: calc(100% - 110px); padding: 4px 6px; }
+  .seg button { padding: 3px 6px; font-size: .72rem; }
   .locate span { display: none; }
   .panel { border-right: 0; overflow: visible; }
   .top { flex-wrap: wrap; }

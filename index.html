@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <header class="top">
@@ -153,6 +153,26 @@
   </aside>
   <div class="mapwrap">
     <div id="map" aria-label="แผนที่"></div>
+    <div class="newsbar" id="newsbar">
+      <button type="button" class="nbtoggle" id="nbtoggle" aria-expanded="true">📰 ข่าว <b id="nbcount"></b></button>
+      <div class="nbbody">
+        <div class="seg" id="mntime" role="group" aria-label="ช่วงเวลาข่าวบนแผนที่">
+          <button type="button" data-win="15">15น.</button>
+          <button type="button" data-win="30">30น.</button>
+          <button type="button" data-win="60">1ชม.</button>
+          <button type="button" data-win="240">4ชม.</button>
+          <button type="button" data-win="1440">24ชม.</button>
+          <button type="button" data-win="0">ทั้งหมด</button>
+        </div>
+        <div class="chips" id="mncats" role="group" aria-label="หัวข้อข่าวบนแผนที่">
+          <button type="button" data-cat="rising">น้ำเพิ่ม</button>
+          <button type="button" data-cat="flooding">น้ำท่วม</button>
+          <button type="button" data-cat="warning">เตือนภัย</button>
+          <button type="button" data-cat="rain">ฝนหนัก</button>
+          <button type="button" data-cat="social">โซเชียล</button>
+        </div>
+      </div>
+    </div>
     <div class="radar-ctl" id="radarCtl" hidden>
       <button id="radarPlay" type="button">▶ เรดาร์</button>
       <span id="radarTime"></span>
@@ -167,6 +187,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
