@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 <header class="top">
@@ -76,12 +76,12 @@
       <div class="filters">
         <input id="rq" type="search" placeholder="ค้นหาถนน ซอย หรือเขต เช่น รามคำแหง" aria-label="ค้นหาถนน">
         <select id="rtime" aria-label="ช่วงเวลา">
-          <option value="active" selected>ยังมีผลอยู่</option>
+          <option value="active">ยังมีผลอยู่</option>
           <option value="15">รายงานใน 15 นาที</option>
           <option value="30">รายงานใน 30 นาที</option>
           <option value="60">รายงานใน 1 ชม.</option>
           <option value="240">รายงานใน 4 ชม.</option>
-          <option value="1440">รายงานใน 24 ชม.</option>
+          <option value="1440" selected>รายงานใน 24 ชม.</option>
           <option value="0">ทั้งหมด</option>
         </select>
         <select id="rcolor" aria-label="ระดับ">
@@ -154,9 +154,9 @@
   <div class="mapwrap">
     <div id="map" aria-label="แผนที่"></div>
     <div class="newsbar" id="newsbar">
-      <button type="button" class="nbtoggle" id="nbtoggle" aria-expanded="true">📰 ข่าว <b id="nbcount"></b></button>
+      <button type="button" class="nbtoggle" id="nbtoggle" aria-expanded="true">⏱ ช่วงเวลา <b id="nbcount"></b></button>
       <div class="nbbody">
-        <div class="seg" id="mntime" role="group" aria-label="ช่วงเวลาข่าวบนแผนที่">
+        <div class="seg" id="mntime" role="group" aria-label="ช่วงเวลาที่รายงาน (ข่าว เหตุบนถนน เตือนภัย)">
           <button type="button" data-win="15">15น.</button>
           <button type="button" data-win="30">30น.</button>
           <button type="button" data-win="60">1ชม.</button>
@@ -164,10 +164,14 @@
           <button type="button" data-win="1440">24ชม.</button>
           <button type="button" data-win="0">ทั้งหมด</button>
         </div>
+        <div class="chips show" id="mnshow" role="group" aria-label="แสดงบนแผนที่">
+          <button type="button" data-layer="news">📰 ข่าว <b></b></button>
+          <button type="button" data-layer="events">🚧 เหตุบนถนน <b></b></button>
+          <button type="button" data-layer="warnings">📢 เตือนภัย <b></b></button>
+        </div>
         <div class="chips" id="mncats" role="group" aria-label="หัวข้อข่าวบนแผนที่">
           <button type="button" data-cat="rising">น้ำเพิ่ม</button>
           <button type="button" data-cat="flooding">น้ำท่วม</button>
-          <button type="button" data-cat="warning">เตือนภัย</button>
           <button type="button" data-cat="rain">ฝนหนัก</button>
           <button type="button" data-cat="social">โซเชียล</button>
         </div>
@@ -187,6 +191,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

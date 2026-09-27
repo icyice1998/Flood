@@ -98,6 +98,7 @@
     roadLines: L.layerGroup().addTo(map),
     events: L.layerGroup().addTo(map),
     news: L.layerGroup().addTo(map),
+    warnings: L.layerGroup().addTo(map),
   };
   map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
@@ -109,6 +110,7 @@
     "เหตุบนถนน (กรมทางหลวง/iTIC · ซูมเข้าเพื่อดูหมุด)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
+    "ประกาศเตือนภัย (จากข่าว)": layers.warnings,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
@@ -293,42 +295,45 @@
   // Read a filter control; tolerate a cached older page that lacks it
   const val = (sel, dflt = "") => { const el = $(sel); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : dflt; };
   const newsCats = new Set();
-  let newsWin = "1440";
+  // One reporting-time window for news, road incidents and warnings (minutes; "0" = all)
+  let timeWin = "1440";
 
   function filteredEvents() {
     if (!DATA) return [];
     const q = val("#rq");
     const col = val("#rcolor");
     const off = val("#rofficial", false);
-    const win = val("#rtime", "active");
+    const win = val("#rtime", timeWin);
     return (DATA.events || []).filter((e) =>
       (win === "active" ? new Date(e.stop) >= Date.now() : (win === "0" || minsAgo(e.start) <= +win)) &&
       (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
       (!col || e.color === col) && (!off || e.official));
   }
 
-  function filteredNews() {
+  function filteredNews({ topics = true } = {}) {
     if (!DATA) return [];
     const q = val("#nq");
-    const win = +val("#ntime", newsWin);
+    const win = +val("#ntime", timeWin);
     return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
       (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
-      (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
+      (!topics || !newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
   }
+  const isWarning = (n) => n.categories.includes("warning");
 
-  // one pin per district, with the number of matching headlines
-  function drawNewsPins(news) {
-    layers.news.clearLayers();
+  // one pin per district, with the number of matching headlines; warnings get their own layer
+  function drawNewsPins(news, layer = layers.news, warn = false) {
+    layer.clearLayers();
     const byDist = new Map();
     news.forEach((n) => n.districts.forEach((d) => { if (!byDist.has(d)) byDist.set(d, []); byDist.get(d).push(n); }));
     for (const [d, items] of byDist) {
       const z = byId[d];
       if (!z) continue;
-      L.marker([z.lat, z.lon], { zIndexOffset: 400, title: `ข่าว ${d}`, icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
-        html: `<div class="news-pin">📰 ${items.length}</div>` }) })
-        .bindPopup(`<b>ข่าวในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
+      L.marker(warn ? [z.lat + 0.004, z.lon + 0.006] : [z.lat, z.lon], { zIndexOffset: warn ? 450 : 400, title: `${warn ? "เตือนภัย" : "ข่าว"} ${d}`,
+        icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
+          html: `<div class="news-pin${warn ? " warn" : ""}">${warn ? "📢" : "📰"} ${items.length}</div>` }) })
+        .bindPopup(`<b>${warn ? "ประกาศเตือนภัย" : "ข่าว"}ในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
           `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a><br><small>${fmtTime(n.time)}${n.via && n.via[d] ? " · จับคู่จาก " + esc(n.via[d]) : ""}</small></li>`).join("")}</ul>`, { maxWidth: 320 })
-        .addTo(layers.news);
+        .addTo(layer);
     }
   }
 
@@ -449,6 +454,7 @@
   }
 
   function renderRoads() {
+    syncTimebar();
     if (!$("#rlist")) { drawEvents(filteredEvents()); return; }
     const rank = (e) => -ROADC[e.color].rank;
     const shown = filteredEvents();
@@ -553,18 +559,38 @@
     if (move && window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
 
-  function syncNewsbar(list) {
-    const win = val("#ntime", newsWin);
-    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === win)));
-    const pinned = list.filter((n) => n.districts.length).length;
-    if ($("#nbcount")) $("#nbcount").textContent = `${pinned} ข่าว`;
+  const pinnedCount = (list) => list.filter((n) => n.districts.some((d) => byId[d])).length;
+  function syncTimebar() {
+    if (!$("#newsbar") || !DATA) return;
+    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === timeWin)));
+    const counts = {
+      news: pinnedCount(filteredNews().filter((n) => !isWarning(n))),
+      events: filteredEvents().length,
+      warnings: pinnedCount(filteredNews({ topics: false }).filter(isWarning)),
+    };
+    document.querySelectorAll("#mnshow button").forEach((b) => {
+      b.querySelector("b").textContent = counts[b.dataset.layer];
+      b.setAttribute("aria-pressed", String(map.hasLayer(layers[b.dataset.layer])));
+    });
+    const label = { 0: "ทั้งหมด", 15: "15 นาที", 30: "30 นาที", 60: "1 ชม.", 240: "4 ชม.", 1440: "24 ชม." }[timeWin] || "";
+    $("#nbcount").textContent = label;
+  }
+
+  // Set the shared window from any control, mirror it into the tab dropdowns and redraw
+  function setTimeWin(w) {
+    timeWin = w;
+    if ($("#ntime")) $("#ntime").value = w;
+    if ($("#rtime") && [...$("#rtime").options].some((o) => o.value === w)) $("#rtime").value = w;
+    renderNews();
+    renderRoads();
   }
 
   function renderNews() {
     const d = DATA;
     const list = filteredNews();
-    drawNewsPins(list);
-    syncNewsbar(list);
+    drawNewsPins(list.filter((n) => !isWarning(n)));
+    drawNewsPins(filteredNews({ topics: false }).filter(isWarning), layers.warnings, true);
+    syncTimebar();
     if (!$("#nlist")) return;
     const official = (d.official || []).map((o) =>
       `<li><span class="tag official">GDACS ${esc(o.level)}</span><a href="${safeUrl(o.link)}" target="_blank" rel="noopener">${esc(o.title)}</a></li>`).join("");
@@ -636,25 +662,29 @@
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
   ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", renderDistricts));
   ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
-  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
-  ["#nq", "#ntime"].forEach((s) => $(s)?.addEventListener("input", renderNews));
+  ["#rq", "#rcolor", "#rofficial"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
+  $("#nq")?.addEventListener("input", renderNews);
+  $("#ntime")?.addEventListener("input", () => setTimeWin($("#ntime").value));
+  // "ยังมีผลอยู่" exists only for road incidents; other values move the shared window
+  $("#rtime")?.addEventListener("input", () => ($("#rtime").value === "active" ? renderRoads() : setTimeWin($("#rtime").value)));
   document.querySelectorAll("#ncats button, #mncats button").forEach((b) => b.addEventListener("click", () => {
     const c = b.dataset.cat;
     if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
     document.querySelectorAll(`#ncats button[data-cat="${c}"], #mncats button[data-cat="${c}"]`).forEach((x) => x.setAttribute("aria-pressed", String(newsCats.has(c))));
     renderNews();
   }));
-  // map news bar: time segments mirror the news-tab dropdown
-  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => {
-    if ($("#ntime")) $("#ntime").value = b.dataset.win;
-    newsWin = b.dataset.win;
-    renderNews();
+  // map time bar: one window for news, road incidents and warnings; chips show/hide each layer
+  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => setTimeWin(b.dataset.win)));
+  document.querySelectorAll("#mnshow button").forEach((b) => b.addEventListener("click", () => {
+    const lyr = layers[b.dataset.layer];
+    if (map.hasLayer(lyr)) map.removeLayer(lyr); else lyr.addTo(map);
+    syncTimebar();
   }));
   const nbToggle = $("#nbtoggle");
   const setNewsbar = (open) => { $("#newsbar")?.classList.toggle("closed", !open); nbToggle?.setAttribute("aria-expanded", String(open)); };
   nbToggle?.addEventListener("click", () => setNewsbar($("#newsbar").classList.contains("closed")));
   setNewsbar(window.innerWidth >= 800);
-  map.on("overlayadd overlayremove", (e) => { if (e.layer === layers.news) $("#newsbar").hidden = e.type === "overlayremove"; });
+  map.on("overlayadd overlayremove", syncTimebar);
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)

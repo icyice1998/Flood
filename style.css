@@ -121,6 +121,9 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
 .chips button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }
 .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.news-pin.warn { border-color: #c62828; background: #fff4f2; }
+.chips.show button b { font-weight: 700; }
+.chips.show button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
 .news-pin { background: #fff; color: #1b2430; border: 2px solid #0b6bcb; border-radius: 999px; font-size: 12px; font-weight: 700;
   display: grid; place-items: center; width: 34px; height: 22px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 .pop-news { margin: 4px 0 0; padding-left: 16px; }
