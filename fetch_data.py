@@ -36,17 +36,18 @@ BBOX = (13.45, 14.20, 100.20, 100.95)
 STALE_HOURS = 3
 NEARBY_KM = 4.0      # fallback radius when a district has no gauge of its own
 RISE_M = 0.10        # canal rise between two runs that counts as "rising"
-NEWS_MAX_AGE_H = 12
+NEWS_MAX_AGE_H = 48      # kept for the page's time filter
+NEWS_SCORE_H = 12        # only recent news counts towards a district's score
 
 THAIWATER = "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/"
 
 NEWS_FEEDS = [
     ("news-google-th", "Google News (TH)",
      "https://news.google.com/rss/search?q=" + urllib.parse.quote(
-         "(น้ำท่วม OR ท่วมขัง OR น้ำรอระบาย OR ระดับน้ำ OR ล้นตลิ่ง) (กรุงเทพ OR กทม OR นนทบุรี OR ปทุมธานี OR สมุทรปราการ) when:1d")
+         "(น้ำท่วม OR ท่วมขัง OR น้ำรอระบาย OR ระดับน้ำ OR ล้นตลิ่ง) (กรุงเทพ OR กทม OR นนทบุรี OR ปทุมธานี OR สมุทรปราการ) when:2d")
      + "&hl=th&gl=TH&ceid=TH:th"),
     ("news-google-en", "Google News (EN)",
-     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok (flood OR flooding OR \"water level\") when:1d")
+     "https://news.google.com/rss/search?q=" + urllib.parse.quote("Bangkok (flood OR flooding OR \"water level\") when:2d")
      + "&hl=en-TH&gl=TH&ceid=TH:en"),
 ]
 # Social feeds are RSS-only. Add more via FLOODWATCHER_SOCIAL_FEEDS="id|label|url;id|label|url"
@@ -834,7 +835,8 @@ def main():
     events = fetch_events(districts)
 
     gauges = canals + rivers
-    assessed = [assess(d, rain, gauges, forecast, deduped, events) for d in districts]
+    recent = [n for n in deduped if age_h(datetime.fromisoformat(n["time"])) <= NEWS_SCORE_H]
+    assessed = [assess(d, rain, gauges, forecast, recent, events) for d in districts]
     order = {r[1]: i for i, r in enumerate(LEVELS)}
     assessed.sort(key=lambda z: (-order[z["level"]], -z["score"], z["name"]))
     names = {d["id"]: d["name"] for d in districts}
@@ -846,14 +848,14 @@ def main():
         "method": {
             "levels": {r[1]: f"score >= {r[0]}" for r in LEVELS},
             "stale_hours": STALE_HOURS, "nearby_km": NEARBY_KM, "rise_m": RISE_M,
-            "news_max_age_h": NEWS_MAX_AGE_H,
+            "news_max_age_h": NEWS_MAX_AGE_H, "news_score_h": NEWS_SCORE_H,
             "disclaimer": "ระบบทดลอง ใช้กฎอย่างง่าย ไม่ใช่ประกาศทางการ โปรดตรวจสอบกับ กทม. / ปภ. / กรมอุตุฯ",
         },
         "districts": assessed,
         "canals": summarize_canals(gauges, deduped, names),
         "stations": {"canal": canals, "river": rivers, "rain": rain},
         "river": river,
-        "news": deduped[:80],
+        "news": deduped[:200],
         "news_filtered": rejected,
         "official": gdacs,
         "cameras": cameras,
