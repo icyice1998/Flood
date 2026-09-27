@@ -116,6 +116,7 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
 .legend i.sq { border-radius: 2px; }
 .legend i.ln { border-radius: 2px; height: 4px; vertical-align: 3px; }
+.legend i.ln.thick { height: 7px; vertical-align: 1px; }
 #rlist li.ev { cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
 .chips button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }

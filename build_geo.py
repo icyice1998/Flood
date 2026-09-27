@@ -92,16 +92,18 @@ def canal_key(name):
 
 def build_canals():
     els = overpass(CANALS_Q)
-    groups = {}
+    groups, kinds = {}, {}
     for el in els:
-        name = el.get("tags", {}).get("name", "")
-        key = canal_key(name)
+        tags = el.get("tags", {})
+        key = canal_key(tags.get("name", ""))
         if not key:
             continue
         ln = line(el, 0.00012)
         if ln:
             groups.setdefault(key, []).append(ln)
-    feats = [{"type": "Feature", "properties": {"id": k, "name": k},
+            if key.startswith("แม่น้ำ"):  # many คลอง are tagged waterway=river in OSM
+                kinds[key] = "river"
+    feats = [{"type": "Feature", "properties": {"id": k, "name": k, "kind": kinds.get(k, "canal")},
               "geometry": {"type": "MultiLineString", "coordinates": v}} for k, v in sorted(groups.items())]
     return {"type": "FeatureCollection", "attribution": "© OpenStreetMap contributors (ODbL)", "features": feats}
 

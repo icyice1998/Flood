@@ -94,12 +94,13 @@
     events: L.layerGroup().addTo(map),
     news: L.layerGroup().addTo(map),
   };
+  map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
     "เขต/อำเภอ (ระดับความเสี่ยง)": layers.districts,
     "ระดับน้ำคลอง (กทม.)": layers.canal,
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
-    "เส้นคลอง (สีตามสถานะ)": layers.canalLines,
+    "แนวคลองและแม่น้ำ (ฟ้า = ไม่ท่วม)": layers.canalLines,
     "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
@@ -111,7 +112,9 @@
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
     `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
     `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
-    `<b>เส้นคลอง</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>ปกติ (สีฟ้า; เหลือง/ส้ม/แดง เมื่อน้ำสูง)</div></div>`;
+    `<b>แนวคลอง / แม่น้ำ</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>คลอง ไม่ท่วม</div>` +
+    `<div><i class="ln thick" style="background:${CANAL_COLOR.normal}"></i>แม่น้ำ ไม่ท่วม</div>` +
+    `<div><i class="ln" style="background:${CANAL_COLOR.warning}"></i><i class="ln" style="background:${CANAL_COLOR.critical};margin-left:-3px"></i><i class="ln" style="background:${CANAL_COLOR.overbank};margin-left:-3px"></i>ช่วง 1.5 กม. รอบจุดวัดที่น้ำสูง → ล้นตลิ่ง</div></div>`;
   const legendToggle = $("#legend .ltoggle");
   const setLegend = (open) => { $("#legend").classList.toggle("closed", !open); legendToggle.setAttribute("aria-expanded", String(open)); };
   legendToggle.addEventListener("click", () => setLegend($("#legend").classList.contains("closed")));
@@ -328,15 +331,40 @@
   const canalLayerByName = {};
   const statusOfCanal = (name) => (DATA.canals.find((c) => c.name === name) || {}).status || "unknown";
 
+  // Waterways are blue; only the stretch around a gauge above its warning level takes that gauge's colour
+  const ALERT_KM = 1.5;
+  const ALERT_RANK = { warning: 1, critical: 2, overbank: 3 };
+  const waterWeight = (river, alert) => {
+    const z = map.getZoom();
+    const base = z <= 10 ? 1.2 : z <= 11 ? 1.6 : z <= 12 ? 2.2 : z <= 13 ? 3 : 4;
+    return base * (river ? 2 : 1) + (alert ? 3 : 0);
+  };
+  function nearRuns(lines, g) {
+    const kx = 111.32 * Math.cos(g.lat * Math.PI / 180), ky = 110.57;
+    const near = ([x, y]) => Math.hypot((x - g.lon) * kx, (y - g.lat) * ky) <= ALERT_KM;
+    const runs = [];
+    for (const ln of lines) {
+      let run = null;
+      for (let i = 0; i < ln.length - 1; i++) {
+        if (near(ln[i]) || near(ln[i + 1])) {
+          if (!run) { run = [ln[i]]; runs.push(run); }
+          run.push(ln[i + 1]);
+        } else run = null;
+      }
+    }
+    return runs.map((r) => r.map(([x, y]) => [y, x]));
+  }
+
   function drawCanalLines() {
     layers.canalLines.clearLayers();
     Object.keys(canalLayerByName).forEach((k) => delete canalLayerByName[k]);
     if (!CANAL_GEO) return;
+    const alertGauges = [...DATA.stations.canal, ...DATA.stations.river]
+      .filter((g) => ALERT_RANK[g.status] && g.canal)
+      .sort((a, b) => ALERT_RANK[a.status] - ALERT_RANK[b.status]);
     L.geoJSON(CANAL_GEO, {
-      style: (f) => {
-        const st = statusOfCanal(f.properties.name);
-        return { color: CANAL_COLOR[st], weight: st === "normal" || st === "unknown" ? 3 : 5, opacity: 0.9 };
-      },
+      pane: "water",
+      style: (f) => ({ color: CANAL_COLOR.normal, weight: waterWeight(f.properties.name.startsWith("แม่น้ำ"), false), opacity: 0.9, lineCap: "round" }),
       onEachFeature: (f, lyr) => {
         const c = DATA.canals.find((x) => x.name === f.properties.name);
         canalLayerByName[f.properties.name] = lyr;
@@ -344,7 +372,24 @@
         lyr.on("click", () => { selectTab("canals"); $("#cq").value = f.properties.name; $("#cstatus").value = ""; $("#cdist").value = ""; renderCanals(); focusCanal(f.properties.name, false); });
       },
     }).addTo(layers.canalLines);
+    // alert stretches on top, worst drawn last
+    for (const g of alertGauges) {
+      const lyr = canalLayerByName[g.canal];
+      if (!lyr) continue;
+      const geom = lyr.feature.geometry;
+      const runs = nearRuns(geom.type === "LineString" ? [geom.coordinates] : geom.coordinates, g);
+      if (!runs.length) continue;
+      L.polyline(runs, { pane: "water", color: CANAL_COLOR[g.status], weight: waterWeight(g.canal.startsWith("แม่น้ำ"), true), opacity: 0.95, lineCap: "round", alert: true, river: g.canal.startsWith("แม่น้ำ") })
+        .bindTooltip(`${esc(g.canal)} · ${esc(g.name)} · ${STATUS[g.status].th}`, { sticky: true })
+        .on("click", () => lyr.fire("click"))
+        .addTo(layers.canalLines);
+    }
   }
+  map.on("zoomend", () => layers.canalLines.eachLayer(function restyle(l) {
+    if (l.eachLayer && !l.feature) { l.eachLayer(restyle); return; }
+    const river = l.options.alert ? l.options.river : (l.feature?.properties.name || "").startsWith("แม่น้ำ");
+    l.setStyle?.({ weight: waterWeight(river, !!l.options.alert) });
+  }));
 
   // distance (km) from point to a polyline, equirectangular approximation
   function kmToLine(lat, lon, coords) {
@@ -730,12 +775,22 @@
   }
 
   // ------------------------------------------------------------- load
+  // Static line layers are optional and large: load in the background, redraw when they arrive
+  let linesLoading = null;
+  function loadLines() {
+    if (linesLoading) return;
+    const get = (u) => fetch(u).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    linesLoading = Promise.all([get(CANALS_URL), get(ROADS_URL)]).then(([c, r]) => {
+      CANAL_GEO = c; ROAD_GEO = r;
+      if (!DATA) return;
+      try { drawCanalLines(); renderRoads(); } catch (err) { console.error("lines", err); }
+    });
+  }
+
   async function load() {
     try {
       if (!GEO) GEO = await (await fetch(DISTRICTS_URL)).json();
-      // Static line layers are optional: the page still works if they are missing
-      if (!CANAL_GEO) CANAL_GEO = await fetch(CANALS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      if (!ROAD_GEO) ROAD_GEO = await fetch(ROADS_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      loadLines();
       const r = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
       if (!r.ok) throw new Error("HTTP " + r.status);
       const next = await r.json();
