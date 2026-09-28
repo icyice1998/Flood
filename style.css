@@ -201,3 +201,17 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
   .top { flex-wrap: wrap; }
   .top h1 span { display: block; }
 }
+
+.report-btn { background: var(--severe) !important; color: #fff !important; border-color: var(--severe) !important; font-weight: 600; }
+dialog.report { max-width: 560px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px;
+  background: var(--surface); color: var(--text); max-height: 85vh; overflow-y: auto; }
+dialog.report::backdrop { background: rgba(0,0,0,.45); }
+dialog.report h2 { margin: 0 0 4px; font-size: 1.15rem; }
+dialog.report h3 { margin: 12px 0 4px; font-size: .95rem; }
+dialog.report ul { padding-left: 18px; margin: 0; font-size: .9rem; }
+dialog.report td { padding: 4px; font-size: .88rem; }
+dialog.report td:first-child { white-space: nowrap; font-weight: 700; }
+dialog.report a { color: var(--accent); }
+dialog.report .x { float: right; border: 0; background: none; color: var(--text); font-size: 1.1rem; }
+dialog.report .note { color: var(--muted); font-size: .82rem; margin: 4px 0; }
+.tr-photo { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 6px; margin-top: 6px; }

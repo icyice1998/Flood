@@ -28,6 +28,7 @@ TZ = timezone(timedelta(hours=7))
 NOW = datetime.now(TZ)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "data", "latest.json")
+TRAFFY_OUT = os.path.join(HERE, "data", "traffy.json")
 DISTRICTS = os.path.join(HERE, "data", "districts.geojson")
 UA = "Floodwatcher/1.0 (+https://github.com/icyice1998/Flood)"
 
@@ -556,6 +557,73 @@ def fetch_events(districts):
     return out
 
 
+# Traffy Fondue: citizen complaints to BMA and other agencies (public API), flood category only
+TRAFFY_URL = "https://publicapi.traffy.in.th/share/teamchadchart/search"
+TRAFFY_HOURS, TRAFFY_MAX, TRAFFY_PAGE = 24, 5000, 1000
+TRAFFY_SCORE_H, TRAFFY_SCORE_MIN = 6, 5
+TRAFFY_STATE = {"รอรับเรื่อง": "new", "ส่งต่อ(ใหม่)": "new", "รับเรื่อง": "working", "กำลังดำเนินการ": "working",
+                "ศึกษาปัญหา": "working", "จัดทำนโยบาย": "working", "เสร็จสิ้น": "done", "ไม่เกี่ยวข้อง": "done"}
+# Rough depth from body references people use in reports
+TRAFFY_DEPTH = [(r"ตาตุ่ม", 10), (r"(?:ครึ่ง|หน้า)แข้ง", 25), (r"ล้อ", 30), (r"เข่า", 45), (r"ต้นขา|โคนขา", 60),
+                (r"เอว", 90), (r"(?:ระดับ|ถึง|ท่วม|ประมาณ|สูง|เกือบ)\s*(?:หน้า)?อก", 120)]
+TRAFFY_PHOTO = "https://storage.googleapis.com/traffy_public_bucket/attachment/"
+
+
+def traffy_depth(text):
+    cm = [int(m) for m in EV_DEPTH.findall(text) if 0 < int(m) < 300]
+    if cm:
+        return max(cm)
+    hits = [d for rx, d in TRAFFY_DEPTH if re.search(rx, text)]
+    return max(hits) if hits else None
+
+
+def fetch_traffy(districts):
+    sid, label = "traffy-fondue", "Traffy Fondue (ประชาชนแจ้งเรื่องน้ำท่วม)"
+    since = NOW - timedelta(hours=TRAFFY_HOURS)
+    base = {"problem_type": "น้ำท่วม", "limit": TRAFFY_PAGE,
+            "start": since.astimezone(timezone.utc).strftime("%Y-%m-%d"),
+            "end": (NOW + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%d")}
+    rows, error = [], None
+    for offset in range(0, TRAFFY_MAX, TRAFFY_PAGE):
+        url = TRAFFY_URL + "?" + urllib.parse.urlencode(dict(base, offset=offset))
+        try:
+            page = json.loads(http_get(url, timeout=60)).get("results") or []
+        except Exception as e:  # noqa: BLE001
+            error = str(e)[:200]
+            break
+        rows += page
+        if len(page) < TRAFFY_PAGE or not page:
+            break
+        oldest = datetime.fromisoformat(page[-1]["timestamp"].replace("+00", "+00:00"))
+        if oldest < since:
+            break
+    if not rows and error:
+        record(sid, label, TRAFFY_URL, False, error=error, kind="reported")
+        return []
+    out, seen = [], set()
+    for r in rows:
+        try:
+            lon, lat = (float(x) for x in r.get("coords") or [])
+            ts = datetime.fromisoformat(r["timestamp"].replace("+00", "+00:00")).astimezone(TZ)
+        except (TypeError, ValueError, KeyError):
+            continue
+        if ts < since or not in_bbox(lat, lon) or r.get("ticket_id") in seen:
+            continue
+        seen.add(r.get("ticket_id"))
+        text = re.sub(r"\s+", " ", r.get("description") or "").strip()
+        out.append({
+            "id": r.get("ticket_id"), "lat": round(lat, 5), "lon": round(lon, 5), "time": iso(ts),
+            "state": TRAFFY_STATE.get(r.get("state"), "working"),
+            "text": text[:100], "depth_cm": traffy_depth(text),
+            "photo": (r.get("photo_url") or "").replace(TRAFFY_PHOTO, ""),
+            "district": district_of(districts, None, None, lat, lon),
+        })
+    out.sort(key=lambda x: x["time"], reverse=True)
+    record(sid, label, TRAFFY_URL, True, len(out), out[0]["time"] if out else None, kind="reported",
+           error=error, extra={"open": sum(x["state"] != "done" for x in out), "hours": TRAFFY_HOURS})
+    return out
+
+
 def fetch_cameras(districts):
     """Traffic CCTV listed by Longdo Traffic (streams hosted by iTIC Foundation / Dept. of Highways).
     Keeps Greater Bangkok cameras with a real stream URL and probes each HLS playlist."""
@@ -666,7 +734,7 @@ def local_or_near(items, d):
     return near, bool(near)
 
 
-def assess(d, rain, gauges, forecast, news, events=()):
+def assess(d, rain, gauges, forecast, news, events=(), traffy=()):
     ev = {"measured": [], "forecast": [], "reported": [], "confirmed": []}
     score = 0
     fresh = set()
@@ -754,6 +822,18 @@ def assess(d, rain, gauges, forecast, news, events=()):
         ev["reported"].append({"text": f"{e['title']} — {e['source']}", "points": 1 if (i == 0 and len(pub) >= 2 and not off) else 0,
                                "time": e["start"], "source_id": e["source_id"], "station": e["id"]})
 
+    # Traffy Fondue complaints in the last 6 h that are still open: many reports = +1, still unconfirmed
+    tr = [t for t in traffy if t["district"] == d["id"] and t["state"] != "done"
+          and age_h(datetime.fromisoformat(t["time"])) <= TRAFFY_SCORE_H]
+    if tr:
+        pts = 1 if len(tr) >= TRAFFY_SCORE_MIN else 0
+        score += pts
+        deep = max((t["depth_cm"] or 0 for t in tr), default=0)
+        ev["reported"].append({"text": f"ประชาชนแจ้งน้ำท่วมผ่าน Traffy Fondue {len(tr)} เรื่องใน {TRAFFY_SCORE_H} ชม. (ยังไม่ปิดเรื่อง)"
+                                       + (f" · ลึกสุดที่แจ้ง ~{deep} ซม." if deep else ""),
+                               "points": pts, "time": tr[0]["time"], "source_id": "traffy-fondue",
+                               "link": f"https://share.traffy.in.th/teamchadchart/{tr[0]['id']}"})
+
     lv = level_for(score)
     agree = len({"rain", "water", "forecast"} & fresh)
     confidence = "high" if (agree >= 3 and (dn or off)) or (agree >= 2 and off) else "medium" if agree >= 2 else "low"
@@ -833,10 +913,11 @@ def main():
     gdacs = fetch_gdacs()
     cameras = fetch_cameras(districts)
     events = fetch_events(districts)
+    traffy = fetch_traffy(districts)
 
     gauges = canals + rivers
     recent = [n for n in deduped if age_h(datetime.fromisoformat(n["time"])) <= NEWS_SCORE_H]
-    assessed = [assess(d, rain, gauges, forecast, recent, events) for d in districts]
+    assessed = [assess(d, rain, gauges, forecast, recent, events, traffy) for d in districts]
     order = {r[1]: i for i, r in enumerate(LEVELS)}
     assessed.sort(key=lambda z: (-order[z["level"]], -z["score"], z["name"]))
     names = {d["id"]: d["name"] for d in districts}
@@ -860,8 +941,15 @@ def main():
         "official": gdacs,
         "cameras": cameras,
         "events": events,
+        "traffy": {"file": "data/traffy.json", "count": len(traffy), "open": sum(t["state"] != "done" for t in traffy),
+                   "hours": TRAFFY_HOURS},
         "sources": list(sources.values()),
     }
+    with open(TRAFFY_OUT, "w", encoding="utf-8") as f:
+        json.dump({"generated_at": NOW.isoformat(timespec="seconds"), "source_id": "traffy-fondue",
+                   "note": "Citizen complaints, flood category, last 24 h. Unverified reports.",
+                   "photo_base": TRAFFY_PHOTO, "link_base": "https://share.traffy.in.th/teamchadchart/", "reports": traffy},
+                  f, ensure_ascii=False, separators=(",", ":"))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))

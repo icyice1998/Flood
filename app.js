@@ -3,6 +3,7 @@
   const DISTRICTS_URL = "data/districts.geojson";
   const CANALS_URL = "data/canals.geojson";
   const ROADS_URL = "data/roads.geojson";
+  const TRAFFY_URL = "data/traffy.json";
   const REFRESH_MS = 5 * 60 * 1000;
   const STALE_MIN = 45;
 
@@ -26,6 +27,7 @@
     yellow: { th: "รถติด", hex: "#d9a400", rank: 1 },
     green: { th: "น้ำลด/ผ่านได้", hex: "#2e9d5b", rank: 0 },
   };
+  const TRAFFY_ST = { new: { th: "รอรับเรื่อง", hex: "#d32f2f" }, working: { th: "กำลังดำเนินการ", hex: "#f57c00" }, done: { th: "เสร็จสิ้น", hex: "#2e7d32" } };
   const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#1e88e5" };
   const CAT = { rising: "น้ำเพิ่ม", flooding: "น้ำท่วม", warning: "เตือนภัย", rain: "ฝนหนัก" };
   const EVIDENCE = [
@@ -99,6 +101,7 @@
     events: L.layerGroup().addTo(map),
     news: L.layerGroup().addTo(map),
     warnings: L.layerGroup().addTo(map),
+    traffy: L.layerGroup().addTo(map),
   };
   map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
@@ -111,6 +114,7 @@
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
     "ประกาศเตือนภัย (จากข่าว)": layers.warnings,
+    "Traffy Fondue (ประชาชนแจ้งน้ำท่วม)": layers.traffy,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
@@ -119,6 +123,7 @@
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
     `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
     `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
+    `<b>Traffy Fondue (ประชาชนแจ้ง)</b>${Object.values(TRAFFY_ST).map((t) => `<div><i style="background:${t.hex}"></i>${t.th}</div>`).join("")}` +
     `<b>แนวคลอง / แม่น้ำ</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>คลอง ไม่ท่วม</div>` +
     `<div><i class="ln thick" style="background:${CANAL_COLOR.normal}"></i>แม่น้ำ ไม่ท่วม</div>` +
     `<div><i class="ln" style="background:${CANAL_COLOR.warning}"></i><i class="ln" style="background:${CANAL_COLOR.critical};margin-left:-3px"></i><i class="ln" style="background:${CANAL_COLOR.overbank};margin-left:-3px"></i>ช่วง 1.5 กม. รอบจุดวัดที่น้ำสูง → ล้นตลิ่ง</div></div>`;
@@ -319,6 +324,33 @@
       (!topics || !newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
   }
   const isWarning = (n) => n.categories.includes("warning");
+
+  // Traffy Fondue citizen reports: many points, so drawn as small canvas circles
+  let TRAFFY = null;
+  const traffyRenderer = L.canvas({ padding: 0.3 });
+  function filteredTraffy() {
+    if (!TRAFFY) return [];
+    const win = +timeWin;
+    return TRAFFY.reports.filter((t) => !win || minsAgo(t.time) <= win);
+  }
+  function traffyPopup(t) {
+    const st = TRAFFY_ST[t.state] || TRAFFY_ST.working;
+    return `<b>ประชาชนแจ้งน้ำท่วม (Traffy Fondue)</b><br><span class="pill" style="background:${st.hex}">${st.th}</span>
+      ${t.depth_cm ? ` <b>ลึก ~${t.depth_cm} ซม.</b>` : ""}<br>${esc(t.text)}${t.text.length >= 100 ? "…" : ""}
+      ${t.photo ? `<img class="tr-photo" loading="lazy" alt="" src="${safeUrl(TRAFFY.photo_base + t.photo)}">` : ""}
+      <br><small>${fmtTime(t.time)}${t.district ? " · เขต" + esc(t.district) : ""} · ยังไม่ยืนยัน</small>
+      <br><a href="${safeUrl(TRAFFY.link_base + encodeURIComponent(t.id))}" target="_blank" rel="noopener">ดูเรื่อง ${esc(t.id)} ที่ Traffy</a>`;
+  }
+  function drawTraffy() {
+    layers.traffy.clearLayers();
+    const r = map.getZoom() >= 14 ? 6 : map.getZoom() >= 12 ? 4 : 3;
+    filteredTraffy().forEach((t) => {
+      const st = TRAFFY_ST[t.state] || TRAFFY_ST.working;
+      L.circleMarker([t.lat, t.lon], { renderer: traffyRenderer, radius: t.depth_cm >= 45 ? r + 1 : r, color: "#fff", weight: 0.6,
+        fillColor: st.hex, fillOpacity: 0.8 }).bindPopup(() => traffyPopup(t), { maxWidth: 280 }).addTo(layers.traffy);
+    });
+  }
+  map.on("zoomend", () => { if (TRAFFY) drawTraffy(); });
 
   // one pin per district, with the number of matching headlines; warnings get their own layer
   function drawNewsPins(news, layer = layers.news, warn = false) {
@@ -567,6 +599,7 @@
       news: pinnedCount(filteredNews().filter((n) => !isWarning(n))),
       events: filteredEvents().length,
       warnings: pinnedCount(filteredNews({ topics: false }).filter(isWarning)),
+      traffy: TRAFFY ? filteredTraffy().length : "…",
     };
     document.querySelectorAll("#mnshow button").forEach((b) => {
       b.querySelector("b").textContent = counts[b.dataset.layer];
@@ -581,6 +614,7 @@
     timeWin = w;
     if ($("#ntime")) $("#ntime").value = w;
     if ($("#rtime") && [...$("#rtime").options].some((o) => o.value === w)) $("#rtime").value = w;
+    drawTraffy();
     renderNews();
     renderRoads();
   }
@@ -822,6 +856,16 @@
     });
   }
 
+  function loadTraffy() {
+    if (!DATA || !DATA.traffy) return;
+    fetch(TRAFFY_URL + "?t=" + encodeURIComponent(DATA.generated_at)).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !Array.isArray(j.reports)) return;
+      TRAFFY = j;
+      drawTraffy();
+      syncTimebar();
+    }).catch(() => {});
+  }
+
   async function load() {
     try {
       if (!GEO) GEO = await (await fetch(DISTRICTS_URL)).json();
@@ -837,6 +881,7 @@
       for (const fn of [renderSummary, renderDistricts, renderCanals, renderNews, renderSources, renderMine, renderRoads]) {
         try { fn(); } catch (err) { console.error(fn.name, err); }
       }
+      loadTraffy();
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");
@@ -856,6 +901,7 @@
   }
 
   $("#reload").addEventListener("click", () => { load(); loadRadar(); });
+  $("#reportBtn")?.addEventListener("click", () => $("#report").showModal());
   const t = pref("fw-tab");
   if (t && document.getElementById("tab-" + t)) selectTab(t);
   load();

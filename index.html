@@ -8,7 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 <header class="top">
@@ -18,6 +18,7 @@
   </div>
   <div class="status">
     <span id="updated">กำลังโหลด…</span>
+    <button id="reportBtn" type="button" class="report-btn" title="ช่องทางแจ้งเหตุและร้องเรียน">📣 แจ้งเหตุ</button>
     <button id="reload" type="button" title="โหลดข้อมูลใหม่">รีเฟรช</button>
   </div>
 </header>
@@ -135,6 +136,7 @@
       
         <tr><td>รายงานบนถนนจากกรมทางหลวง/เจ้าหน้าที่ iTIC ในเขต</td><td>≥1 / ≥3 จุด (นับเป็น "ยืนยันผลกระทบแล้ว")</td><td>2 / 3</td></tr>
         <tr><td>รายงานบนถนนจากประชาชน</td><td>≥2 จุด (เมื่อไม่มีรายงานจากเจ้าหน้าที่)</td><td>1</td></tr>
+        <tr><td>ประชาชนแจ้งน้ำท่วมผ่าน Traffy Fondue (ยังไม่ปิดเรื่อง) ใน 6 ชม.</td><td>≥5 เรื่องในเขต (นับเป็น "รายงาน รอยืนยัน")</td><td>1</td></tr>
       </table>
       <p>ระดับ: ปกติ &lt;3 · เฝ้าระวัง 3–4 · เตือนภัย 5–7 · อันตราย ≥8</p>
       <h3>สีถนน</h3>
@@ -168,6 +170,7 @@
           <button type="button" data-layer="news">📰 ข่าว <b></b></button>
           <button type="button" data-layer="events">🚧 เหตุบนถนน <b></b></button>
           <button type="button" data-layer="warnings">📢 เตือนภัย <b></b></button>
+          <button type="button" data-layer="traffy">🙋 Traffy <b></b></button>
         </div>
         <div class="chips" id="mncats" role="group" aria-label="หัวข้อข่าวบนแผนที่">
           <button type="button" data-cat="rising">น้ำเพิ่ม</button>
@@ -189,8 +192,38 @@
   </div>
 </main>
 
+
+<dialog id="report" class="report" aria-labelledby="reportTitle">
+  <form method="dialog"><button class="x" aria-label="ปิด">✕</button></form>
+  <h2 id="reportTitle">แจ้งเหตุน้ำท่วม / ร้องเรียน</h2>
+  <p class="note">อันตรายต่อชีวิต โทร 1669 หรือ 191 ก่อนเสมอ · กดเบอร์เพื่อโทรได้จากมือถือ</p>
+  <h3>แจ้งพร้อมรูปและตำแหน่ง</h3>
+  <ul>
+    <li><b>Traffy Fondue</b>: แจ้งปัญหาในกรุงเทพฯ ส่งถึงเขตและหน่วยงานโดยตรง ติดตามสถานะได้ · <a href="https://page.line.me/traffyfondue" target="_blank" rel="noopener">LINE @traffyfondue</a> · <a href="https://www.traffy.in.th/" target="_blank" rel="noopener">เว็บไซต์</a></li>
+    <li><b>Longdo Traffic</b>: ปักหมุดเหตุบนถนน (น้ำท่วม รถติด ถนนปิด) ให้ผู้ใช้ถนนคนอื่นเห็น · <a href="https://traffic.longdo.com/" target="_blank" rel="noopener">traffic.longdo.com</a></li>
+  </ul>
+  <h3>สายด่วน</h3>
+  <table>
+    <tr><td><a href="tel:1555">1555</a></td><td>กรุงเทพมหานคร (น้ำท่วม ท่อระบายน้ำ ขอเครื่องสูบน้ำ/กระสอบทราย)</td></tr>
+    <tr><td><a href="tel:1784">1784</a></td><td>กรมป้องกันและบรรเทาสาธารณภัย (ปภ.) ขอความช่วยเหลือ/อพยพ</td></tr>
+    <tr><td><a href="tel:1567">1567</a></td><td>ศูนย์ดำรงธรรม กระทรวงมหาดไทย (ร้องเรียน นนทบุรี ปทุมธานี สมุทรปราการ สมุทรสาคร)</td></tr>
+    <tr><td><a href="tel:1586">1586</a></td><td>กรมทางหลวง (ทางหลวงน้ำท่วม ผ่านไม่ได้)</td></tr>
+    <tr><td><a href="tel:1146">1146</a></td><td>กรมทางหลวงชนบท</td></tr>
+    <tr><td><a href="tel:1460">1460</a></td><td>กรมชลประทาน (ประตูระบายน้ำ คลองชลประทาน)</td></tr>
+    <tr><td><a href="tel:1182">1182</a></td><td>กรมอุตุนิยมวิทยา</td></tr>
+    <tr><td><a href="tel:1130">1130</a></td><td>การไฟฟ้านครหลวง (กทม. นนทบุรี สมุทรปราการ): ไฟดับ สายไฟจมน้ำ</td></tr>
+    <tr><td><a href="tel:1129">1129</a></td><td>การไฟฟ้าส่วนภูมิภาค (ปทุมธานี สมุทรสาคร และต่างจังหวัด)</td></tr>
+    <tr><td><a href="tel:1137">1137</a></td><td>จส.100 (แจ้ง/สอบถามจราจร)</td></tr>
+    <tr><td><a href="tel:1644">1644</a></td><td>สวพ.91 (จราจร)</td></tr>
+    <tr><td><a href="tel:1193">1193</a></td><td>ตำรวจทางหลวง</td></tr>
+    <tr><td><a href="tel:1669">1669</a></td><td>เจ็บป่วยฉุกเฉิน</td></tr>
+    <tr><td><a href="tel:191">191</a> / <a href="tel:199">199</a></td><td>ตำรวจ / ดับเพลิงและกู้ภัย</td></tr>
+  </table>
+  <p class="note">เรื่องที่ประชาชนแจ้งผ่าน Traffy Fondue แสดงบนแผนที่เป็นจุดเล็ก (ชั้น "🙋 Traffy") ในสถานะ "ยังไม่ยืนยัน"</p>
+</dialog>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
