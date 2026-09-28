@@ -87,6 +87,15 @@ published terms; credit is shown on the map.
 - **Map and filters.** On the map, reports are small canvas circles (layer 🙋 Traffy), filtered by the shared time window.
 - **Complaint channels.** The 📣 แจ้งเหตุ button lists where to report: Traffy Fondue, Longdo Traffic and the main hotlines (1555, 1784, 1567, 1586, 1146, 1460, 1182, 1130, 1129, 1137, 1644, 1193, 1669, 191/199). Every number is a tap-to-call link.
 
+## Rain forecast page (`rain.html`)
+
+- **District map.** The browser fetches a 48-hour hourly forecast straight from Open-Meteo for all 72 district centres in one request: precipitation and precipitation probability.
+  - An hour slider with play/pause colours the districts by hourly or accumulated rain. Accumulated rain uses TMD classes: 0.1–10, 10–35, 35–90 and >90 mm.
+  - A list ranks districts by rain over the next 3 / 6 / 12 / 24 / 48 h.
+  - Picking a district shows its hourly chart (rain bars, probability line) and compares ECMWF, GFS and ICON totals, as a rough confidence check.
+- **Windy tab.** Embeds Windy's free public widget: rain, accumulated rain, thunderstorms or clouds, with a choice of ECMWF, GFS or ICON.
+- **Other sources.** Google has no public forecast API or embed, so the page links to Google's weather search instead, along with Windy.com, TMD and the BMA radar.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.
