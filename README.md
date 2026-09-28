@@ -111,6 +111,8 @@ A one-page list and map of main roads that are likely flooded, in the style of "
   - Green: only receding reports.
 - **Continuous.** A road counts as continuous when it has had live reports for at least 3 h.
 - **Map.** Schematic by default (district outlines and rivers), with an optional OSM basemap. Only the parts of each road within 500 m of a report are drawn. Numbers sit on the medoid report.
+- **List views.** Grouped by area (BMA's 6 zones plus the surrounding provinces, 5 roads per group with "ดูเพิ่ม"), grouped by level, or ungrouped with 10 roads per page. Level and area filters show counts, and there is a search box. Each card shows 2 top reports, with the rest under "ดูรายงานทั้งหมด". Tapping a number on the map opens the right page or group and highlights the card.
+- **Traffy filter.** Only Traffy reports whose text mentions water, flooding or drainage are counted.
 - **Limits.** This is based on reports, not live traffic speed; Google Maps traffic colours have no free API.
 
 ## Update schedule

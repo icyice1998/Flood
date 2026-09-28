@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Mitr:wght@500;600&display=swap">
 <link rel="stylesheet" href="style.css?v=13">
-<link rel="stylesheet" href="avoid.css?v=1">
+<link rel="stylesheet" href="avoid.css?v=2">
 </head>
 <body class="avoid">
 <header class="top">
@@ -47,12 +47,26 @@
     <p class="av-foot">เส้นสีฟ้า = แม่น้ำและคลองหลัก · ตำแหน่งถนนจาก OpenStreetMap ระบายเฉพาะช่วงในระยะ 500 ม. จากจุดที่มีรายงาน</p>
   </section>
 
+  <div class="av-toolbar">
+    <input id="q" type="search" placeholder="ค้นหาถนน เขต หรือพื้นที่" aria-label="ค้นหา">
+    <div class="seg" id="lvl" role="group" aria-label="ระดับ"></div>
+    <label class="av-group">จัดกลุ่ม
+      <select id="groupBy">
+        <option value="zone" selected>ตามพื้นที่</option>
+        <option value="level">ตามระดับ</option>
+        <option value="none">ไม่จัดกลุ่ม (แบ่งหน้า)</option>
+      </select>
+    </label>
+  </div>
+  <div class="av-zones" id="zones" role="group" aria-label="สรุปตามพื้นที่"></div>
+  <p class="av-count" id="count"></p>
   <section class="av-list" id="list"></section>
+  <nav class="av-pager" id="pager" aria-label="เปลี่ยนหน้า"></nav>
 
   <details class="how">
     <summary>คัดเลือกถนนอย่างไร</summary>
     <ol>
-      <li>รวบรวมรายงานในช่วงเวลาที่เลือก: รายงานน้ำท่วม/ถนนปิด/รถติดจาก Longdo Traffic (กรมทางหลวง, iTIC, ประชาชน) ที่ยังมีผลหรือแจ้งในช่วงนั้น และเรื่องน้ำท่วมใน Traffy Fondue ที่ยังไม่ปิด</li>
+      <li>รวบรวมรายงานในช่วงเวลาที่เลือก: รายงานน้ำท่วม/ถนนปิด/รถติดจาก Longdo Traffic (กรมทางหลวง, iTIC, ประชาชน) ที่ยังมีผลหรือแจ้งในช่วงนั้น และเรื่องน้ำท่วมใน Traffy Fondue ที่ยังไม่ปิดและข้อความพูดถึงน้ำ/ท่วม/ระบาย (ตัดเรื่องที่ไม่เกี่ยวข้องออก)</li>
       <li>ผูกแต่ละรายงานกับถนนสายหลักที่ใกล้ที่สุดในระยะ 80 ม. (ไม่นับทางด่วน/ทางยกระดับ และซอยย่อย)</li>
       <li>ให้คะแนนต่อถนน: รายงานสีแดง/ถนนปิด 3 · น้ำขัง 2 · รถติด 1 · Traffy น้ำลึก ≥30 ซม. 2 · Traffy อื่น 1 (Traffy รวมไม่เกิน 8 ต่อถนน)</li>
       <li><b>แดง (หลีกเลี่ยง)</b>: มีรายงาน "ผ่านไม่ได้"/ถนนปิด/สีแดง หรือแจ้งน้ำลึก ≥45 ซม. อย่างน้อย 2 เรื่อง หรือคะแนน ≥10 · <b>ส้ม (ระวัง)</b>: คะแนน ≥4 จากอย่างน้อย 2 รายงาน · <b>เขียว</b>: มีแต่รายงานน้ำลด/ผ่านได้</li>
@@ -62,6 +76,6 @@
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="avoid.js?v=1"></script>
+<script src="avoid.js?v=2"></script>
 </body>
 </html>
