@@ -96,6 +96,24 @@ published terms; credit is shown on the map.
 - **Windy tab.** Embeds Windy's free public widget: rain, accumulated rain, thunderstorms or clouds, with a choice of ECMWF, GFS or ICON.
 - **Other sources.** Google has no public forecast API or embed, so the page links to Google's weather search instead, along with Windy.com, TMD and the BMA radar.
 
+## Route planner (`route.html#flood`, `route.html#traffic`)
+
+A single page with two modes. Routes come from Valhalla on the public FOSSGIS server, and place search from Nominatim, both called straight from the browser. The start point can be GPS (📍), a search result or a tap on the map; A/B markers can be dragged. Plans can be shared with `?o=lat,lon&d=lat,lon`.
+
+- **🛟 เลี่ยงน้ำท่วม (avoid floods).**
+  1. Get 2–3 normal routes.
+  2. Collect hazards within 60 m of each route: active or recent (6 h) Longdo flood and closure reports, Traffy reports with water ≥30 cm, and overbank or critical gauges within 150 m.
+  3. Re-route with `exclude_locations` for the hazards that lie on those routes (up to 45 points, 2 rounds).
+  4. Rank by closed roads, then flood points, then time.
+- **🚗 เส้นทางจราจร (traffic).**
+  - Only closed or impassable roads are excluded.
+  - Each route's estimated time gets delays added: jam report +8 min, red flood +10, orange +4, deep Traffy report +3, and +5 or +10 for heavy rain in the next hour along the route (one Open-Meteo request for all routes).
+  - Ranked by total time.
+  - Live speed data isn't available, so times are estimates.
+- **Both modes show:** hazards on the chosen route, rain along it, live CCTV within 300 m (HLS in the popup), news from the last 24 h that mentions the route's roads, and a Google Maps link that follows the chosen route through waypoints.
+
+The rain page also gets 📍: it forecasts for the user's exact position and selects the district there.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

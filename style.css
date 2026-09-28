@@ -38,7 +38,7 @@ button { font: inherit; cursor: pointer; }
 }
 .top h1 { margin: 0; font-size: 1.25rem; }
 .top h1 span { font-weight: 400; color: var(--muted); font-size: 1rem; }
-.pages { display: flex; gap: 4px; margin-top: 2px; }
+.pages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .pages a { font-size: .85rem; color: var(--muted); text-decoration: none; padding: 1px 10px; border: 1px solid var(--line); border-radius: 999px; }
 .pages a[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
 .top .sub { margin: 0; color: var(--muted); font-size: .85rem; }

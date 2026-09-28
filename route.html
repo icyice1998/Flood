@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher เส้นทาง</title>
+<meta name="description" content="วางเส้นทางเลี่ยงน้ำท่วมและรถติดในกรุงเทพฯ จากรายงานน้ำท่วม Traffy Fondue กล้อง CCTV ข่าว และพยากรณ์ฝน">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="route.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span id="ptitle">เส้นทาง</span></h1>
+    <nav class="pages">
+      <a href="./">แผนที่น้ำท่วม</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="route.html#flood" data-mode="flood">🛟 เลี่ยงน้ำท่วม</a><a href="route.html#traffic" data-mode="traffic">🚗 เส้นทางจราจร</a>
+    </nav>
+  </div>
+  <div class="status"><span id="updated">กำลังโหลดข้อมูล…</span></div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <p class="intro" id="intro"></p>
+      <form id="form" class="rform" autocomplete="off">
+        <div class="pt">
+          <span class="dotA">A</span>
+          <input id="from" type="search" placeholder="ต้นทาง: ค้นหาสถานที่ หรือแตะแผนที่" aria-label="ต้นทาง">
+          <button type="button" id="gps" title="ใช้ตำแหน่งของฉัน">📍</button>
+        </div>
+        <ul class="suggest" id="sFrom"></ul>
+        <div class="pt">
+          <span class="dotB">B</span>
+          <input id="to" type="search" placeholder="ปลายทาง: ค้นหาสถานที่ หรือแตะแผนที่" aria-label="ปลายทาง">
+          <button type="button" id="swap" title="สลับต้นทาง/ปลายทาง">⇅</button>
+        </div>
+        <ul class="suggest" id="sTo"></ul>
+        <div class="ractions">
+          <button type="submit" id="go" class="primary">หาเส้นทาง</button>
+          <button type="button" id="clear">ล้าง</button>
+        </div>
+      </form>
+      <p class="rstatus" id="rstatus" aria-live="polite"></p>
+      <div id="results"></div>
+      <details class="how">
+        <summary>ระบบเลือกเส้นทางอย่างไร</summary>
+        <div id="how"></div>
+        <p class="note">เส้นทางคำนวณโดย Valhalla (OpenStreetMap, เซิร์ฟเวอร์สาธารณะของ FOSSGIS) · ค้นหาสถานที่ด้วย Nominatim · ข้อมูลน้ำท่วม/จราจรจาก Floodwatcher (Longdo/กรมทางหลวง/iTIC, Traffy Fondue, ThaiWater, ข่าว) · พยากรณ์ฝน Open-Meteo · ไม่มีข้อมูลความเร็วรถแบบเรียลไทม์ เวลาเดินทางเป็นค่าประมาณจากถนน บวกเวลาชดเชยจากรายงานรถติด · ใช้ประกอบการตัดสินใจ ตรวจสภาพจริงและกล้องก่อนออกเดินทาง</p>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่เส้นทาง"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
+<script src="route.js?v=1"></script>
+</body>
+</html>

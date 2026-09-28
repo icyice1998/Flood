@@ -35,3 +35,6 @@
   .timebar { bottom: 30px; }
   #view-map .legend { bottom: 110px; }
 }
+.gpsbtn { width: 100%; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); border-radius: 8px; padding: 7px; font-weight: 600; margin-bottom: 8px; }
+.rain-me { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: .9rem; }
+.me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35); }

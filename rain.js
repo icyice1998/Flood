@@ -167,6 +167,55 @@
     if (v === "map") map.invalidateSize();
   }));
 
+  // ------------------------------------------------------------- my location
+  const meLayer = L.layerGroup().addTo(map);
+  function inRing(x, y, ring) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function districtAt(lat, lon) {
+    for (const f of GEO.features) {
+      const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+      if (polys.some((p) => inRing(lon, lat, p[0]) && !p.slice(1).some((h) => inRing(lon, lat, h)))) return f.properties.id;
+    }
+    return null;
+  }
+  async function showMe(lat, lon, acc) {
+    meLayer.clearLayers();
+    L.circle([lat, lon], { radius: acc, weight: 1, color: "#1a73e8", fillOpacity: 0.08, interactive: false }).addTo(meLayer);
+    L.marker([lat, lon], { icon: L.divIcon({ className: "", iconSize: [16, 16], html: '<div class="me-dot"></div>' }), interactive: false }).addTo(meLayer);
+    map.setView([lat, lon], 12);
+    const box = $("#me");
+    box.hidden = false;
+    box.textContent = "กำลังดึงพยากรณ์ที่ตำแหน่งของคุณ…";
+    try {
+      const j = await (await fetch(`${OM}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}&hourly=precipitation,precipitation_probability&forecast_hours=24&timezone=Asia%2FBangkok`)).json();
+      const p = j.hourly.precipitation, pr = j.hourly.precipitation_probability;
+      const first = p.findIndex((v) => (v || 0) >= 1);
+      const peak = p.indexOf(Math.max(...p));
+      box.innerHTML = `<b>ที่ตำแหน่งของคุณ</b><br>ฝน 1 ชม. หน้า <b>${(p[0] || 0).toFixed(1)} มม.</b> (โอกาส ${pr[0] ?? "–"}%) · 3 ชม. <b>${sum(p.slice(0, 3)).toFixed(1)} มม.</b> · 24 ชม. <b>${sum(p).toFixed(1)} มม.</b><br>
+        ${first >= 0 ? `ฝน ≥1 มม./ชม. เริ่มประมาณ <b>${fmtHour(j.hourly.time[first])}</b> · หนักสุด ${fmtHour(j.hourly.time[peak])} (${p[peak].toFixed(1)} มม.)` : "ไม่คาดว่าจะมีฝน ≥1 มม./ชม. ใน 24 ชม."}`;
+    } catch (e) { box.textContent = "ดึงพยากรณ์ที่ตำแหน่งไม่ได้: " + e.message; }
+    const id = GEO && districtAt(lat, lon);
+    if (id && FC) select(id);
+  }
+  $("#gps").addEventListener("click", () => {
+    if (!("geolocation" in navigator) || !window.isSecureContext) { $("#me").hidden = false; $("#me").textContent = "ใช้ GPS ไม่ได้ (ต้องเปิดผ่าน https และเบราว์เซอร์รองรับ)"; return; }
+    $("#gps").textContent = "📍 กำลังหาตำแหน่ง…";
+    navigator.geolocation.getCurrentPosition((p) => {
+      $("#gps").textContent = "📍 ฝนที่ตำแหน่งของฉัน (อัปเดต)";
+      showMe(p.coords.latitude, p.coords.longitude, p.coords.accuracy);
+    }, (err) => {
+      $("#gps").textContent = "📍 ฝนที่ตำแหน่งของฉัน";
+      $("#me").hidden = false;
+      $("#me").textContent = { 1: "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง — เปิดสิทธิ์ Location ให้เว็บนี้แล้วลองใหม่", 2: "หาตำแหน่งไม่ได้", 3: "หาตำแหน่งนานเกินไป" }[err.code] || err.message;
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  });
+
   // ------------------------------------------------------------- load
   async function load() {
     try {

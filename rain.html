@@ -9,13 +9,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="style.css?v=13">
-<link rel="stylesheet" href="rain.css?v=1">
+<link rel="stylesheet" href="rain.css?v=2">
 </head>
 <body>
 <header class="top">
   <div class="brand">
     <h1>Floodwatcher <span>พยากรณ์ฝน</span></h1>
-    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html" aria-current="page">🌧 พยากรณ์ฝน</a></nav>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html" aria-current="page">🌧 พยากรณ์ฝน</a><a href="route.html#flood">🛟 เลี่ยงน้ำท่วม</a><a href="route.html#traffic">🚗 เส้นทางจราจร</a></nav>
   </div>
   <div class="status">
     <span id="updated">กำลังโหลด…</span>
@@ -26,6 +26,8 @@
 <main class="layout">
   <aside class="panel">
     <section class="tab">
+      <button type="button" id="gps" class="gpsbtn">📍 ฝนที่ตำแหน่งของฉัน</button>
+      <div class="rain-me" id="me" hidden></div>
       <div class="rain-now" id="now"></div>
       <h3 class="rh">เขตที่ฝนมากที่สุด <small id="toplabel"></small></h3>
       <div class="seg" id="horizon" role="group" aria-label="ช่วงเวลาสะสม">
@@ -93,6 +95,6 @@
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="rain.js?v=1"></script>
+<script src="rain.js?v=2"></script>
 </body>
 </html>
