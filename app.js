@@ -303,6 +303,28 @@
   // One reporting-time window for news, road incidents and warnings (minutes; "0" = all)
   let timeWin = "1440";
 
+  // Same rules as fetch_data.dedupe_events, so data written by an older fetcher also shows once per incident
+  const EV_PASS = /\((ผ่านได้|ผ่านไม่ได้)\)/;
+  const EV_KM = /กม\.?\s*ที่\s*(\d+\+\d+)(?:\s*-\s*(\d+\+\d+))?/;
+  function normalizeEvents(events) {
+    const kmApprox = (a, b) => Math.hypot((a.lat - b.lat) * 110.57, (a.lon - b.lon) * 111.32 * Math.cos(a.lat * Math.PI / 180));
+    const kept = [];
+    for (const e of [...events].sort((a, b) => (a.start < b.start ? 1 : -1))) {
+      const pass = (e.title.match(EV_PASS) || [])[1];
+      if (pass === "ผ่านได้" && e.color === "red") e.color = "orange";   // officially passable
+      if (pass === "ผ่านไม่ได้") e.color = "red";
+      if (e.km === undefined) {
+        const m = e.text.match(EV_KM);
+        e.km = m ? m[1] + (m[2] && m[2] !== m[1] ? "–" + m[2] : "") : null;
+      }
+      const key = e.title.replace(EV_PASS, "").trim() + "|" + (e.km || "");
+      const same = kept.find((k) => k._key === key && k.kind === e.kind && (e.km || kmApprox(k, e) <= 0.8));
+      if (same) same.repeats = (same.repeats || 0) + 1 + (e.repeats || 0);
+      else kept.push(Object.assign(e, { _key: key }));
+    }
+    return kept;
+  }
+
   function filteredEvents() {
     if (!DATA) return [];
     const q = val("#rq");
@@ -495,8 +517,8 @@
     const n = (c) => shown.filter((e) => e.color === c).length;
     $("#rcount").innerHTML = `${list.length} รายงาน · <b style="color:${ROADC.red.hex}">แดง ${n("red")}</b> · <b style="color:${ROADC.orange.hex}">ส้ม ${n("orange")}</b> · เหลือง ${n("yellow")} · เขียว ${n("green")} · แตะเพื่อดูบนแผนที่`;
     $("#rlist").innerHTML = list.slice(0, 200).map((e) => `<li class="ev" data-ev="${esc(e.id)}"><span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span>
-      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}</b>
-      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
+      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}${e.km ? ` · กม. ${esc(e.km)}` : ""}</b>
+      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.repeats ? ` · อัปเดต/แจ้งซ้ำ ${e.repeats} ครั้ง` : ""}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
     document.querySelectorAll("#rlist li[data-ev]").forEach((li) => li.addEventListener("click", () => {
       const m = eventMarkers[li.dataset.ev];
       if (!m) return;
@@ -875,6 +897,7 @@
       const next = await r.json();
       if (!next.districts) throw new Error("ข้อมูลรุ่นเก่า รอรอบอัปเดตถัดไป");
       DATA = next;
+      DATA.events = normalizeEvents(DATA.events || []);
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);

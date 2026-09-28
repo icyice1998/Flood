@@ -202,7 +202,7 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
   .top h1 span { display: block; }
 }
 
-.report-btn { background: var(--severe) !important; color: #fff !important; border-color: var(--severe) !important; font-weight: 600; }
+.report-btn { white-space: nowrap; background: var(--severe) !important; color: #fff !important; border-color: var(--severe) !important; font-weight: 600; }
 dialog.report { max-width: 560px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px;
   background: var(--surface); color: var(--text); max-height: 85vh; overflow-y: auto; }
 dialog.report::backdrop { background: rgba(0,0,0,.45); }

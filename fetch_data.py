@@ -490,6 +490,9 @@ EV_RED = re.compile(r"รถติด|ติดขัด|ติดสะสม|�
 EV_GREEN = re.compile(r"ลดลง|แห้งแล้ว|น้ำแห้ง|คลี่คลาย|ผ่านได้ปกติ|สัญจรได้ปกติ|กลับมาสัญจร|receding|passable", re.I)
 EV_DEPTH = re.compile(r"(\d{1,3})\s*(?:ซม|ซ\.ม|เซนติเมตร|cm)", re.I)
 EV_KINDS = {"flood", "trafficjam", "roadclosed"}
+EV_PASS = re.compile(r"\((ผ่านได้|ผ่านไม่ได้)\)")  # Dept. of Highways puts the road status in the title
+EV_DEDUP_KM = 0.8
+EV_KM = re.compile(r"กม\.?\s*ที่\s*(\d+\+\d+)(?:\s*-\s*(\d+\+\d+))?")  # highway km marker range
 EV_PREFIX = re.compile(r"^(?:น้ำท่วม(?:ขัง)?|รถติด|ถนนปิด|ปิดถนน|การจราจรติดขัด)\s*")
 
 
@@ -530,7 +533,12 @@ def fetch_events(districts):
         contrib = e.get("contributor") or ""
         official = contrib == "DOH Admin" or contrib.startswith("itic.")
         src = "กรมทางหลวง" if contrib == "DOH Admin" else "เจ้าหน้าที่ iTIC" if contrib.startswith("itic.") else "ประชาชน (ผ่าน iTIC/Longdo)"
-        if kind == "roadclosed" or EV_RED.search(text) or (depth or 0) >= 30:
+        passable = EV_PASS.search(e.get("title") or "")
+        if passable and passable.group(1) == "ผ่านไม่ได้":
+            color = "red"
+        elif passable:  # officially passable: flooded but not red, whatever the free text says
+            color = "green" if EV_GREEN.search(text) else "orange"
+        elif kind == "roadclosed" or EV_RED.search(text) or (depth or 0) >= 30:
             color = "red"
         elif kind == "trafficjam":
             color = "yellow"
@@ -543,18 +551,42 @@ def fetch_events(districts):
             color = "red"
         title = e.get("title") or ""
         road = EV_PREFIX.sub("", title).strip()
+        kmm = EV_KM.search(text)
+        km_range = (kmm.group(1) + (f"–{kmm.group(2)}" if kmm.group(2) and kmm.group(2) != kmm.group(1) else "")) if kmm else None
         out.append({
             "id": e.get("eid"), "kind": kind, "color": color, "title": title,
             "text": re.sub(r"\s+", " ", e.get("description") or "")[:300],
             "lat": round(lat, 6), "lon": round(lon, 6),
             "start": iso(start), "stop": iso(stop), "official": official, "source": src,
-            "road": road, "road_key": road_key(road), "depth_cm": depth,
+            "road": road, "road_key": road_key(road), "depth_cm": depth, "km": km_range,
             "district": district_of(districts, None, None, lat, lon), "source_id": sid,
         })
     out.sort(key=lambda x: x["start"], reverse=True)
+    out, merged = dedupe_events(out)
     record(sid, label, url, True, len(out), out[0]["start"] if out else None, kind="reported",
-           extra={"official": sum(x["official"] for x in out), "red": sum(x["color"] == "red" for x in out)})
+           extra={"official": sum(x["official"] for x in out), "red": sum(x["color"] == "red" for x in out),
+                  "duplicates_merged": merged})
     return out
+
+
+def dedupe_events(events):
+    """Drop repeats: the same report posted twice, and older updates of the same road segment.
+    Two reports are one incident when the title (without the passable status) is the same and either
+    both give the same highway km range, or neither does and they are within EV_DEDUP_KM.
+    The newest report is kept and counts how many it replaced. Input must be sorted newest first."""
+    kept = []
+    for e in events:
+        key = (EV_PASS.sub("", e["title"]).strip(), e.get("km"))
+        for k in kept:
+            if (k["_key"] == key and e["kind"] == k["kind"]
+                    and (e.get("km") or km(e["lat"], e["lon"], k["lat"], k["lon"]) <= EV_DEDUP_KM)):
+                k["repeats"] = k.get("repeats", 0) + 1
+                break
+        else:
+            kept.append(dict(e, _key=key))
+    for k in kept:
+        k.pop("_key")
+    return kept, len(events) - len(kept)
 
 
 # Traffy Fondue: citizen complaints to BMA and other agencies (public API), flood category only
