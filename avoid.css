@@ -1,0 +1,68 @@
+body.avoid { height: auto; min-height: 100%; }
+.av-wrap { max-width: 900px; margin: 0 auto; padding: 14px 16px 40px; width: 100%; }
+.av-updated { margin: 0 0 4px; color: var(--muted); font-size: .88rem; }
+.av-title { font-family: "Mitr", "Sarabun", sans-serif; font-weight: 600; font-size: clamp(1.6rem, 5vw, 2.4rem); margin: 0 0 8px; line-height: 1.2; }
+.av-title em { color: #c62828; font-style: normal; }
+.av-lead { color: var(--muted); margin: 0 0 12px; font-size: 1rem; }
+.av-warn { background: #fff8e1; color: #5d4600; border-left: 4px solid #f9a825; border-radius: 6px; padding: 10px 12px; font-size: .92rem; margin-bottom: 12px; }
+@media (prefers-color-scheme: dark) { .av-warn { background: #3a3218; color: #f3e3b0; } }
+.av-controls { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 12px; }
+.av-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; padding: 4px 10px; font-size: .88rem; }
+.chip i { width: 22px; height: 5px; border-radius: 3px; display: inline-block; }
+.chip.red { background: #fdecea; color: #b71c1c; } .chip.red i { background: #c62828; }
+.chip.orange { background: #fff4e0; color: #8a5300; } .chip.orange i { background: #f0a500; }
+.chip.green { background: #e8f5e9; color: #1b5e20; } .chip.green i { background: #2e7d32; }
+.av-win select { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
+.av-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+.av-card-h { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.av-card-h span { color: var(--muted); font-size: .82rem; flex: 1; }
+.av-base { font-size: .82rem; color: var(--muted); }
+.av-card #map { position: relative; height: min(70vh, 620px); background: #f7f8fa; }
+@media (prefers-color-scheme: dark) { .av-card #map { background: #161c22; } }
+.av-foot { margin: 0; padding: 6px 12px; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--line); }
+.num { width: 26px; height: 26px; border-radius: 50%; color: #fff; font-weight: 700; font-size: 12px; display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.dist-label { background: none; border: 0; box-shadow: none; color: #8a94a0; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.dist-label::before { display: none; }
+.av-list { display: grid; gap: 8px; }
+.road { display: grid; grid-template-columns: 34px 1fr; gap: 4px 10px; background: var(--surface); border: 1px solid var(--line); border-left: 6px solid var(--c); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+.road.sel { box-shadow: 0 0 0 2px var(--c) inset; }
+.road .num { grid-row: span 3; }
+.road h3 { margin: 0; font-size: 1.05rem; }
+.road h3 .lv { font-size: .75rem; color: #fff; background: var(--c); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+.road .m { color: var(--muted); font-size: .84rem; }
+.road ul { grid-column: 2; margin: 4px 0 0; padding-left: 18px; font-size: .84rem; }
+.road ul small { color: var(--muted); }
+.av-empty { color: var(--muted); padding: 16px; text-align: center; }
+.how { margin-top: 16px; font-size: .88rem; }
+.how summary { cursor: pointer; font-weight: 600; }
+
+.av-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0 8px; }
+.av-toolbar input { flex: 1 1 200px; min-width: 0; font: inherit; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
+.av-toolbar select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); }
+.av-group { font-size: .88rem; color: var(--muted); }
+#lvl button { padding: 4px 10px; font-size: .85rem; }
+#lvl button b { margin-left: 4px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+.av-zones { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.av-zones button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: .84rem; text-align: left; }
+.av-zones button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.av-zones .r { color: #c62828; font-weight: 700; } .av-zones .o { color: #b87800; font-weight: 700; }
+.av-count { margin: 0 0 8px; color: var(--muted); font-size: .85rem; }
+.av-sec { margin-bottom: 14px; }
+.av-sec > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+  padding: 8px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; font-weight: 700; }
+.av-sec > summary::-webkit-details-marker { display: none; }
+.av-sec > summary::before { content: "▾"; margin-right: 6px; color: var(--muted); }
+.av-sec:not([open]) > summary::before { content: "▸"; }
+.av-sec > summary .t { flex: 1; }
+.av-sec > summary small { font-weight: 400; color: var(--muted); }
+.av-sec .items { display: grid; gap: 8px; }
+.more { border: 1px dashed var(--line); background: none; color: var(--accent); border-radius: 8px; padding: 6px; font: inherit; font-size: .88rem; width: 100%; }
+.road .all { grid-column: 2; font-size: .84rem; }
+.road .all summary { cursor: pointer; color: var(--accent); }
+.road .zone-tag { font-size: .75rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; margin-left: 4px; vertical-align: 2px; }
+.av-pager { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 12px; }
+.av-pager button { min-width: 34px; border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 6px; padding: 4px 8px; }
+.av-pager button[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.av-pager button:disabled { opacity: .4; }

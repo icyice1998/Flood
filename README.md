@@ -87,6 +87,34 @@ published terms; credit is shown on the map.
 - **Map and filters.** On the map, reports are small canvas circles (layer 🙋 Traffy), filtered by the shared time window.
 - **Complaint channels.** The 📣 แจ้งเหตุ button lists where to report: Traffy Fondue, Longdo Traffic and the main hotlines (1555, 1784, 1567, 1586, 1146, 1460, 1182, 1130, 1129, 1137, 1644, 1193, 1669, 191/199). Every number is a tap-to-call link.
 
+## Rain forecast page (`rain.html`)
+
+- **District map.** The browser fetches a 48-hour hourly forecast straight from Open-Meteo for all 72 district centres in one request: precipitation and precipitation probability.
+  - An hour slider with play/pause colours the districts by hourly or accumulated rain. Accumulated rain uses TMD classes: 0.1–10, 10–35, 35–90 and >90 mm.
+  - A list ranks districts by rain over the next 3 / 6 / 12 / 24 / 48 h.
+  - Picking a district shows its hourly chart (rain bars, probability line) and compares ECMWF, GFS and ICON totals, as a rough confidence check.
+- **Windy tab.** Embeds Windy's free public widget: rain, accumulated rain, thunderstorms or clouds, with a choice of ECMWF, GFS or ICON.
+- **Other sources.** Google has no public forecast API or embed, so the page links to Google's weather search instead, along with Windy.com, TMD and the BMA radar.
+
+The rain page (`rain.html`) also has 📍, which forecasts for the visitor's position with Open-Meteo and selects their district.
+
+## Roads to avoid (`avoid.html`)
+
+A one-page list and map of main roads that are likely flooded, in the style of "เลี่ยง N ถนนนี้".
+
+- **Reports used.** Longdo Traffic reports (Dept. of Highways, iTIC, public) that are still active or were filed within the chosen window (3 / 6 / 12 / 24 h), plus open Traffy Fondue flood reports.
+- **Matching reports to roads.** Each report is snapped to the nearest main road (`data/roads.geojson`) within 80 m; expressways and side streets are skipped. Reports are then grouped by road name, so highway-numbered DOH reports and street-named public reports land on the same road.
+- **Score per road.** Red or closed = 3, flooded = 2, jam = 1, Traffy with water ≥30 cm = 2, other Traffy = 1. Traffy is capped at 8 per road.
+- **Levels.**
+  - Red (avoid): a red / closed / "(ผ่านไม่ได้)" report, at least 2 reports of water ≥45 cm, or a score ≥10.
+  - Orange (drive slowly): a score ≥4 from at least 2 reports.
+  - Green: only receding reports.
+- **Continuous.** A road counts as continuous when it has had live reports for at least 3 h.
+- **Map.** Schematic by default (district outlines and rivers), with an optional OSM basemap. Only the parts of each road within 500 m of a report are drawn. Numbers sit on the medoid report.
+- **List views.** Grouped by area (BMA's 6 zones plus the surrounding provinces, 5 roads per group with "ดูเพิ่ม"), grouped by level, or ungrouped with 10 roads per page. Level and area filters show counts, and there is a search box. Each card shows 2 top reports, with the rest under "ดูรายงานทั้งหมด". Tapping a number on the map opens the right page or group and highlights the card.
+- **Traffy filter.** Only Traffy reports whose text mentions water, flooding or drainage are counted.
+- **Limits.** This is based on reports, not live traffic speed; Google Maps traffic colours have no free API.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

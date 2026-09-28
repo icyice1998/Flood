@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher พยากรณ์ฝน</title>
+<meta name="description" content="พยากรณ์ฝนรายเขต กรุงเทพฯ และปริมณฑล 48 ชั่วโมงข้างหน้า และแผนที่ Windy">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="rain.css?v=2">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>พยากรณ์ฝน</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html" aria-current="page">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a></nav>
+  </div>
+  <div class="status">
+    <span id="updated">กำลังโหลด…</span>
+    <button id="reload" type="button">รีเฟรช</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <button type="button" id="gps" class="gpsbtn">📍 ฝนที่ตำแหน่งของฉัน</button>
+      <div class="rain-me" id="me" hidden></div>
+      <div class="rain-now" id="now"></div>
+      <h3 class="rh">เขตที่ฝนมากที่สุด <small id="toplabel"></small></h3>
+      <div class="seg" id="horizon" role="group" aria-label="ช่วงเวลาสะสม">
+        <button type="button" data-h="3">3 ชม.</button>
+        <button type="button" data-h="6">6 ชม.</button>
+        <button type="button" data-h="12">12 ชม.</button>
+        <button type="button" data-h="24" aria-pressed="true">24 ชม.</button>
+        <button type="button" data-h="48">48 ชม.</button>
+      </div>
+      <div class="filters" style="margin-top:8px">
+        <input id="q" type="search" placeholder="ค้นหาเขต/อำเภอ" aria-label="ค้นหาเขต">
+      </div>
+      <ol class="toplist" id="top"></ol>
+
+      <h3 class="rh" id="dname">เลือกเขตบนแผนที่หรือในรายการ</h3>
+      <div id="chart" class="chart" aria-live="polite"></div>
+      <div class="models" id="models"></div>
+
+      <h3 class="rh">แหล่งพยากรณ์อื่น</h3>
+      <ul class="links">
+        <li><a id="gLink" href="https://www.google.com/search?q=%E0%B8%9E%E0%B8%A2%E0%B8%B2%E0%B8%81%E0%B8%A3%E0%B8%93%E0%B9%8C%E0%B8%AD%E0%B8%B2%E0%B8%81%E0%B8%B2%E0%B8%A8+%E0%B8%81%E0%B8%A3%E0%B8%B8%E0%B8%87%E0%B9%80%E0%B8%97%E0%B8%9E" target="_blank" rel="noopener">Google พยากรณ์อากาศ</a> <small>(Google ไม่มี API สาธารณะให้ฝังในเว็บ จึงเปิดในหน้าใหม่)</small></li>
+        <li><a href="https://www.windy.com/?rain,13.75,100.55,10" target="_blank" rel="noopener">Windy.com</a> <small>(เปิดเต็มจอ เลือกโมเดลและเวลาได้ละเอียด)</small></li>
+        <li><a href="https://www.tmd.go.th/" target="_blank" rel="noopener">กรมอุตุนิยมวิทยา</a> <small>(ประกาศเตือนภัยทางการ · สายด่วน 1182)</small></li>
+        <li><a href="https://weather.bangkok.go.th/" target="_blank" rel="noopener">เรดาร์ฝน กทม.</a></li>
+      </ul>
+      <p class="note">พยากรณ์รายเขตจาก <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> (โมเดลที่เหมาะกับพื้นที่ ความละเอียดรายชั่วโมง) ดึงสดจากเบราว์เซอร์ · เกณฑ์สี 24 ชม. ตามกรมอุตุฯ: ฝนเล็กน้อย 0.1–10, ปานกลาง 10.1–35, หนัก 35.1–90, หนักมาก &gt;90 มม. · พยากรณ์ไม่ใช่การวัด ตรวจสอบประกาศทางการเสมอ</p>
+    </section>
+  </aside>
+
+  <div class="mapwrap">
+    <div class="viewtabs" role="tablist">
+      <button type="button" role="tab" data-view="map" aria-selected="true">🗺 ฝนรายเขต</button>
+      <button type="button" role="tab" data-view="windy" aria-selected="false">🌀 Windy</button>
+    </div>
+    <div id="view-map" class="view">
+      <div id="map" aria-label="แผนที่ฝนรายเขต"></div>
+      <div class="timebar" id="timebar">
+        <button type="button" id="play" aria-label="เล่น">▶</button>
+        <input type="range" id="hour" min="0" max="47" value="0" aria-label="ชั่วโมงข้างหน้า">
+        <span id="hourlabel"></span>
+        <div class="seg" id="mode" role="group" aria-label="แสดงแบบ">
+          <button type="button" data-mode="hourly" aria-pressed="true">รายชั่วโมง</button>
+          <button type="button" data-mode="accum">สะสม</button>
+        </div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div id="view-windy" class="view" hidden>
+      <div class="windybar">
+        <div class="seg" id="wOverlay" role="group" aria-label="ชั้นข้อมูล Windy">
+          <button type="button" data-v="rain" aria-pressed="true">ฝน</button>
+          <button type="button" data-v="rainAccu">ฝนสะสม</button>
+          <button type="button" data-v="thunder">พายุฝนฟ้าคะนอง</button>
+          <button type="button" data-v="clouds">เมฆ</button>
+        </div>
+        <div class="seg" id="wModel" role="group" aria-label="โมเดล">
+          <button type="button" data-v="ecmwf" aria-pressed="true">ECMWF</button>
+          <button type="button" data-v="gfs">GFS</button>
+          <button type="button" data-v="icon">ICON</button>
+        </div>
+      </div>
+      <iframe id="windy" title="แผนที่ Windy" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="rain.js?v=2"></script>
+</body>
+</html>
