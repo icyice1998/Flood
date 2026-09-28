@@ -1,0 +1,35 @@
+name: WeatherNext key
+
+# Writes the Google Maps Platform browser key (Weather API) into weathernext.config.js so the
+# WeatherNext 3 page can call the API from the visitor's browser. A browser key is public by
+# nature: restrict it in Google Cloud Console to the Weather API and to the HTTP referrer
+# https://icyice1998.github.io/*, and set a daily quota cap. Run this after adding or rotating
+# the GOOGLE_WEATHER_API_KEY repo secret.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  write-key:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write config
+        env:
+          KEY: ${{ secrets.GOOGLE_WEATHER_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then echo "::error::Repo secret GOOGLE_WEATHER_API_KEY is not set"; exit 1; fi
+          if ! printf '%s' "$KEY" | grep -Eq '^[A-Za-z0-9_-]{20,60}$'; then echo "::error::Key has unexpected characters"; exit 1; fi
+          printf '%s\n%s\nwindow.WEATHERNEXT_KEY = "%s";\n' \
+            "// Written by .github/workflows/weathernext-key.yml from the GOOGLE_WEATHER_API_KEY repo secret." \
+            "// Browser key: restricted to the Weather API and https://icyice1998.github.io/* in Google Cloud Console." \
+            "$KEY" > weathernext.config.js
+          git config user.name "floodwatcher-bot"
+          git config user.email "action@github.com"
+          git add weathernext.config.js
+          git diff --cached --quiet && exit 0
+          git commit -q -m "WeatherNext: update browser key config [skip ci]"
+          for i in 1 2 3; do git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push -q && exit 0; sleep $((i * 5)); done
+          exit 1

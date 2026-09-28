@@ -96,23 +96,24 @@ published terms; credit is shown on the map.
 - **Windy tab.** Embeds Windy's free public widget: rain, accumulated rain, thunderstorms or clouds, with a choice of ECMWF, GFS or ICON.
 - **Other sources.** Google has no public forecast API or embed, so the page links to Google's weather search instead, along with Windy.com, TMD and the BMA radar.
 
-## Route planner (`route.html#flood`, `route.html#traffic`)
+## Google WeatherNext 3 page (`weathernext.html`)
 
-A single page with two modes. Routes come from Valhalla on the public FOSSGIS server, and place search from Nominatim, both called straight from the browser. The start point can be GPS (📍), a search result or a tap on the map; A/B markers can be dragged. Plans can be shared with `?o=lat,lon&d=lat,lon`.
+Hourly forecasts from Google DeepMind's WeatherNext 3 (5 km, updated hourly), fetched from the Google Maps Platform Weather API (`forecast/hours:lookup`).
 
-- **🛟 เลี่ยงน้ำท่วม (avoid floods).**
-  1. Get 2–3 normal routes.
-  2. Collect hazards within 60 m of each route: active or recent (6 h) Longdo flood and closure reports, Traffy reports with water ≥30 cm, and overbank or critical gauges within 150 m.
-  3. Re-route with `exclude_locations` for the hazards that lie on those routes (up to 45 points, 2 rounds).
-  4. Rank by closed roads, then flood points, then time.
-- **🚗 เส้นทางจราจร (traffic).**
-  - Only closed or impassable roads are excluded.
-  - Each route's estimated time gets delays added: jam report +8 min, red flood +10, orange +4, deep Traffy report +3, and +5 or +10 for heavy rain in the next hour along the route (one Open-Meteo request for all routes).
-  - Ranked by total time.
-  - Live speed data isn't available, so times are estimates.
-- **Both modes show:** hazards on the chosen route, rain along it, live CCTV within 300 m (HLS in the popup), news from the last 24 h that mentions the route's roads, and a Google Maps link that follows the chosen route through waypoints.
+- **Requests.** The visitor's browser calls the API when the page opens. Google's terms limit caching, so nothing is stored in this repo; results live in `sessionStorage` for 20 min.
+- **What the page shows.**
+  - A 9-point city overview for the next 24 h (9 calls per visit).
+  - A point forecast for 48 h (2 calls) at the visitor's GPS position, a tapped point or a district: rain, probability, thunderstorm probability, condition and temperature, compared with Open-Meteo.
+- **Attribution.** Every view carries "Source: Includes weather data from Google", as the Weather API policy requires.
 
-The rain page also gets 📍: it forecasts for the user's exact position and selects the district there.
+**Setup (once, by the repo owner):**
+1. In Google Cloud Console, enable the Weather API on a project with billing. Create an API key and restrict it: *API restrictions* → Weather API only; *Application restrictions* → HTTP referrers `https://icyice1998.github.io/*`. Set a daily quota cap under Quotas so costs cannot run away.
+2. In GitHub, go to Settings → Secrets and variables → Actions → New repository secret. Name: `GOOGLE_WEATHER_API_KEY`.
+3. Actions → "WeatherNext key" → Run workflow. It writes `weathernext.config.js`.
+
+A browser key is visible to anyone who opens the page; that is how Google browser keys work. The referrer and API restrictions and the quota cap are what protect it. Until the key is set, the page shows a setup notice and makes no calls.
+
+The rain page (`rain.html`) also has 📍, which forecasts for the visitor's position with Open-Meteo and selects their district.
 
 ## Update schedule
 

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher WeatherNext</title>
+<meta name="description" content="พยากรณ์ฝนรายชั่วโมงจาก Google WeatherNext 3 (Google Weather API) สำหรับกรุงเทพฯ และปริมณฑล">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="rain.css?v=2">
+<link rel="stylesheet" href="weathernext.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>Google WeatherNext 3</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="weathernext.html" aria-current="page">🌦 Google WeatherNext 3</a></nav>
+  </div>
+  <div class="status"><span id="updated"></span></div>
+</header>
+
+<div class="banner stale" id="setup" hidden></div>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <p class="note intro">พยากรณ์รายชั่วโมงจากโมเดล AI <b>WeatherNext 3</b> ของ Google DeepMind (ความละเอียด 5 กม. อัปเดตทุกชั่วโมง) ผ่าน Google Weather API · เลือกจุดด้วย 📍 ตำแหน่งของฉัน แตะแผนที่ หรือเลือกเขต</p>
+      <button type="button" id="gps" class="gpsbtn">📍 พยากรณ์ที่ตำแหน่งของฉัน</button>
+      <div class="filters">
+        <select id="dist" aria-label="เลือกเขต"><option value="">— หรือเลือกเขต/อำเภอ —</option></select>
+      </div>
+
+      <div id="point" class="wn-point" hidden></div>
+
+      <h3 class="rh">ภาพรวมเมือง <small>(9 จุด · 24 ชม. ข้างหน้า)</small></h3>
+      <div id="overview" class="wn-over"><p class="note">กำลังโหลด…</p></div>
+
+      <p class="attrib">Source: Includes weather data from Google · Google Maps Platform Weather API (WeatherNext 3)</p>
+      <details class="how">
+        <summary>ข้อมูลนี้มาจากไหน / ข้อจำกัด</summary>
+        <ul>
+          <li>เบราว์เซอร์ของคุณเรียก Google Weather API โดยตรงขณะเปิดหน้า ข้อมูลเก็บไว้ในเครื่องชั่วคราว 20 นาที ไม่ได้บันทึกลงระบบของ Floodwatcher</li>
+          <li>ปริมาณฝน (มม./ชม.) และโอกาสฝน (%) มาจาก <code>precipitation.qpf</code> และ <code>precipitation.probability</code> · โอกาสพายุฝนฟ้าคะนองจาก <code>thunderstormProbability</code></li>
+          <li>เทียบกับ Open-Meteo (โมเดลตัวเลขแบบดั้งเดิม) เพื่อดูว่าสองแหล่งเห็นตรงกันหรือไม่ ถ้าต่างกันมาก ความไม่แน่นอนสูง</li>
+          <li>พยากรณ์ไม่ใช่การวัด ตรวจสอบประกาศกรมอุตุนิยมวิทยา (1182) เสมอ</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่สำหรับเลือกจุด"></div>
+    <p class="maphint">แตะแผนที่เพื่อดูพยากรณ์ WeatherNext 3 ที่จุดนั้น</p>
+  </div>
+</main>
+
+<script src="weathernext.config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="weathernext.js?v=1"></script>
+</body>
+</html>
