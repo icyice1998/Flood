@@ -96,24 +96,22 @@ published terms; credit is shown on the map.
 - **Windy tab.** Embeds Windy's free public widget: rain, accumulated rain, thunderstorms or clouds, with a choice of ECMWF, GFS or ICON.
 - **Other sources.** Google has no public forecast API or embed, so the page links to Google's weather search instead, along with Windy.com, TMD and the BMA radar.
 
-## Google WeatherNext 3 page (`weathernext.html`)
-
-Hourly forecasts from Google DeepMind's WeatherNext 3 (5 km, updated hourly), fetched from the Google Maps Platform Weather API (`forecast/hours:lookup`).
-
-- **Requests.** The visitor's browser calls the API when the page opens. Google's terms limit caching, so nothing is stored in this repo; results live in `sessionStorage` for 20 min.
-- **What the page shows.**
-  - A 9-point city overview for the next 24 h (9 calls per visit).
-  - A point forecast for 48 h (2 calls) at the visitor's GPS position, a tapped point or a district: rain, probability, thunderstorm probability, condition and temperature, compared with Open-Meteo.
-- **Attribution.** Every view carries "Source: Includes weather data from Google", as the Weather API policy requires.
-
-**Setup (once, by the repo owner):**
-1. In Google Cloud Console, enable the Weather API on a project with billing. Create an API key and restrict it: *API restrictions* → Weather API only; *Application restrictions* → HTTP referrers `https://icyice1998.github.io/*`. Set a daily quota cap under Quotas so costs cannot run away.
-2. In GitHub, go to Settings → Secrets and variables → Actions → New repository secret. Name: `GOOGLE_WEATHER_API_KEY`.
-3. Actions → "WeatherNext key" → Run workflow. It writes `weathernext.config.js`.
-
-A browser key is visible to anyone who opens the page; that is how Google browser keys work. The referrer and API restrictions and the quota cap are what protect it. Until the key is set, the page shows a setup notice and makes no calls.
-
 The rain page (`rain.html`) also has 📍, which forecasts for the visitor's position with Open-Meteo and selects their district.
+
+## Roads to avoid (`avoid.html`)
+
+A one-page list and map of main roads that are likely flooded, in the style of "เลี่ยง N ถนนนี้".
+
+- **Reports used.** Longdo Traffic reports (Dept. of Highways, iTIC, public) that are still active or were filed within the chosen window (3 / 6 / 12 / 24 h), plus open Traffy Fondue flood reports.
+- **Matching reports to roads.** Each report is snapped to the nearest main road (`data/roads.geojson`) within 80 m; expressways and side streets are skipped. Reports are then grouped by road name, so highway-numbered DOH reports and street-named public reports land on the same road.
+- **Score per road.** Red or closed = 3, flooded = 2, jam = 1, Traffy with water ≥30 cm = 2, other Traffy = 1. Traffy is capped at 8 per road.
+- **Levels.**
+  - Red (avoid): a red / closed / "(ผ่านไม่ได้)" report, at least 2 reports of water ≥45 cm, or a score ≥10.
+  - Orange (drive slowly): a score ≥4 from at least 2 reports.
+  - Green: only receding reports.
+- **Continuous.** A road counts as continuous when it has had live reports for at least 3 h.
+- **Map.** Schematic by default (district outlines and rivers), with an optional OSM basemap. Only the parts of each road within 500 m of a report are drawn. Numbers sit on the medoid report.
+- **Limits.** This is based on reports, not live traffic speed; Google Maps traffic colours have no free API.
 
 ## Update schedule
 

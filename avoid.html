@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher ถนนที่ควรเลี่ยง</title>
+<meta name="description" content="รายชื่อถนนในกรุงเทพฯ และปริมณฑลที่อาจมีน้ำท่วมขัง ควรเลี่ยง จากรายงานกรมทางหลวง iTIC ประชาชน และ Traffy Fondue">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&family=Mitr:wght@500;600&display=swap">
+<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="avoid.css?v=1">
+</head>
+<body class="avoid">
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>ถนนที่ควรเลี่ยง</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="avoid.html" aria-current="page">🚫 ถนนที่ควรเลี่ยง</a></nav>
+  </div>
+</header>
+
+<main class="av-wrap">
+  <p class="av-updated" id="updated">กำลังโหลด…</p>
+  <h2 class="av-title" id="title">เลี่ยงถนนเหล่านี้ อาจมีน้ำท่วมขัง</h2>
+  <p class="av-lead" id="lead"></p>
+  <div class="av-warn">ข้อมูลมาจาก<b>รายงาน</b>ของกรมทางหลวง เจ้าหน้าที่ iTIC ประชาชน (Longdo Traffic) และ Traffy Fondue ไม่ใช่ความเร็วรถแบบสด ถนนที่ควรระวังมากที่สุดคือเส้นที่มีรายงานต่อเนื่องหลายชั่วโมงและยังไม่ปิดเรื่อง</div>
+  <div class="av-controls">
+    <div class="av-chips">
+      <span class="chip red"><i></i>สีแดง = หลีกเลี่ยง</span>
+      <span class="chip orange"><i></i>สีส้ม = ขับช้า ระวัง</span>
+      <span class="chip green"><i></i>สีเขียว = มีรายงานน้ำลด ใช้ได้ตามปกติ</span>
+    </div>
+    <label class="av-win">รายงานใน
+      <select id="win">
+        <option value="3">3 ชม.</option>
+        <option value="6" selected>6 ชม.</option>
+        <option value="12">12 ชม.</option>
+        <option value="24">24 ชม.</option>
+      </select>
+    </label>
+  </div>
+
+  <section class="av-card">
+    <div class="av-card-h"><b>แผนที่ถนนที่ควรเลี่ยง</b><span>แตะเส้นหรือตัวเลขเพื่อดูรายละเอียด</span>
+      <label class="av-base"><input type="checkbox" id="basemap"> แผนที่ถนนจริง</label></div>
+    <div id="map" aria-label="แผนที่ถนนที่ควรเลี่ยง"></div>
+    <p class="av-foot">เส้นสีฟ้า = แม่น้ำและคลองหลัก · ตำแหน่งถนนจาก OpenStreetMap ระบายเฉพาะช่วงในระยะ 500 ม. จากจุดที่มีรายงาน</p>
+  </section>
+
+  <section class="av-list" id="list"></section>
+
+  <details class="how">
+    <summary>คัดเลือกถนนอย่างไร</summary>
+    <ol>
+      <li>รวบรวมรายงานในช่วงเวลาที่เลือก: รายงานน้ำท่วม/ถนนปิด/รถติดจาก Longdo Traffic (กรมทางหลวง, iTIC, ประชาชน) ที่ยังมีผลหรือแจ้งในช่วงนั้น และเรื่องน้ำท่วมใน Traffy Fondue ที่ยังไม่ปิด</li>
+      <li>ผูกแต่ละรายงานกับถนนสายหลักที่ใกล้ที่สุดในระยะ 80 ม. (ไม่นับทางด่วน/ทางยกระดับ และซอยย่อย)</li>
+      <li>ให้คะแนนต่อถนน: รายงานสีแดง/ถนนปิด 3 · น้ำขัง 2 · รถติด 1 · Traffy น้ำลึก ≥30 ซม. 2 · Traffy อื่น 1 (Traffy รวมไม่เกิน 8 ต่อถนน)</li>
+      <li><b>แดง (หลีกเลี่ยง)</b>: มีรายงาน "ผ่านไม่ได้"/ถนนปิด/สีแดง หรือแจ้งน้ำลึก ≥45 ซม. อย่างน้อย 2 เรื่อง หรือคะแนน ≥10 · <b>ส้ม (ระวัง)</b>: คะแนน ≥4 จากอย่างน้อย 2 รายงาน · <b>เขียว</b>: มีแต่รายงานน้ำลด/ผ่านได้</li>
+      <li>"ต่อเนื่อง" = มีรายงานมาแล้วอย่างน้อย 3 ชม. และยังไม่หมดอายุ</li>
+    </ol>
+  </details>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="avoid.js?v=1"></script>
+</body>
+</html>
