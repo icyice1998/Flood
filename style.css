@@ -121,12 +121,16 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; }
 .chips button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 3px 12px; font-size: .85rem; }
 .chips button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.news-pin.warn { border-color: #c62828; background: #fff4f2; }
+.chips.show button b { font-weight: 700; }
+.chips.show button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
 .news-pin { background: #fff; color: #1b2430; border: 2px solid #0b6bcb; border-radius: 999px; font-size: 12px; font-weight: 700;
   display: grid; place-items: center; width: 34px; height: 22px; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
 .pop-news { margin: 4px 0 0; padding-left: 16px; }
 .pop-news li { margin-bottom: 4px; }
 .linkish { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 .ev-pin { border-radius: 4px; border: 2px solid #fff; color: #fff; font-weight: 700; display: grid; place-items: center; box-shadow: 0 1px 3px rgba(0,0,0,.35); line-height: 1; }
+.ev-hidden .ev-pin { display: none; }
 #rlist li.ev:hover { background: var(--bg); }
 #rlist .pill { margin-right: 4px; }
 .legend .ltoggle { border: 0; background: none; color: var(--text); font-weight: 600; font-size: .78rem; padding: 0; }
@@ -197,3 +201,17 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
   .top { flex-wrap: wrap; }
   .top h1 span { display: block; }
 }
+
+.report-btn { white-space: nowrap; background: var(--severe) !important; color: #fff !important; border-color: var(--severe) !important; font-weight: 600; }
+dialog.report { max-width: 560px; width: calc(100% - 32px); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px;
+  background: var(--surface); color: var(--text); max-height: 85vh; overflow-y: auto; }
+dialog.report::backdrop { background: rgba(0,0,0,.45); }
+dialog.report h2 { margin: 0 0 4px; font-size: 1.15rem; }
+dialog.report h3 { margin: 12px 0 4px; font-size: .95rem; }
+dialog.report ul { padding-left: 18px; margin: 0; font-size: .9rem; }
+dialog.report td { padding: 4px; font-size: .88rem; }
+dialog.report td:first-child { white-space: nowrap; font-weight: 700; }
+dialog.report a { color: var(--accent); }
+dialog.report .x { float: right; border: 0; background: none; color: var(--text); font-size: 1.1rem; }
+dialog.report .note { color: var(--muted); font-size: .82rem; margin: 4px 0; }
+.tr-photo { display: block; width: 100%; max-height: 180px; object-fit: cover; border-radius: 6px; margin-top: 6px; }

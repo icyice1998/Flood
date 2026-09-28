@@ -43,7 +43,7 @@ jobs:
             started=$SECONDS
             git pull -q --rebase origin "${GITHUB_REF_NAME}" || git rebase --abort || true
             if python fetch_data.py; then
-              git add data/latest.json
+              git add data/latest.json data/traffy.json
               if ! git diff --cached --quiet; then
                 git commit -q -m "floodwatcher: data $(date -u +%Y-%m-%dT%H:%MZ) [skip ci]"
                 for i in 1 2 3; do

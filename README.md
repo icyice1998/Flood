@@ -78,6 +78,15 @@ popup is open. District cards and the GPS card list cameras within 5 km, to
 help confirm flooding by eye. This is not an official open API and has no
 published terms; credit is shown on the map.
 
+## Traffy Fondue and complaint channels
+
+- **Traffy Fondue.** `fetch_data.py` reads the Traffy Fondue public API (`publicapi.traffy.in.th/share/teamchadchart/search`, category น้ำท่วม).
+  - It keeps up to 5,000 citizen reports from the last 24 h in Greater Bangkok and writes them to `data/traffy.json`, which the page loads in the background.
+  - Each report has its time, state (new / working / done), an approximate depth parsed from the text (cm, or body references such as ข้อเท้า/เข่า/เอว/อก), district, photo and ticket link.
+  - Reports are unverified. They count as *reported* evidence: +1 when a district has at least 5 open reports in the last 6 h.
+- **Map and filters.** On the map, reports are small canvas circles (layer 🙋 Traffy), filtered by the shared time window.
+- **Complaint channels.** The 📣 แจ้งเหตุ button lists where to report: Traffy Fondue, Longdo Traffic and the main hotlines (1555, 1784, 1567, 1586, 1146, 1460, 1182, 1130, 1129, 1137, 1644, 1193, 1669, 191/199). Every number is a tap-to-call link.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

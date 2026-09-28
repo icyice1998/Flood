@@ -3,6 +3,7 @@
   const DISTRICTS_URL = "data/districts.geojson";
   const CANALS_URL = "data/canals.geojson";
   const ROADS_URL = "data/roads.geojson";
+  const TRAFFY_URL = "data/traffy.json";
   const REFRESH_MS = 5 * 60 * 1000;
   const STALE_MIN = 45;
 
@@ -26,6 +27,7 @@
     yellow: { th: "รถติด", hex: "#d9a400", rank: 1 },
     green: { th: "น้ำลด/ผ่านได้", hex: "#2e9d5b", rank: 0 },
   };
+  const TRAFFY_ST = { new: { th: "รอรับเรื่อง", hex: "#d32f2f" }, working: { th: "กำลังดำเนินการ", hex: "#f57c00" }, done: { th: "เสร็จสิ้น", hex: "#2e7d32" } };
   const CANAL_COLOR = { overbank: "#c62828", critical: "#e46c0a", warning: "#d9a400", normal: "#1e88e5", unknown: "#1e88e5" };
   const CAT = { rising: "น้ำเพิ่ม", flooding: "น้ำท่วม", warning: "เตือนภัย", rain: "ฝนหนัก" };
   const EVIDENCE = [
@@ -75,6 +77,11 @@
 
   // ------------------------------------------------------------- map
   const map = L.map("map", { zoomControl: true }).setView([13.76, 100.58], 10);
+  // Road incident pins crowd the city view: show them from this zoom in (road colours stay visible)
+  const EV_MIN_ZOOM = 13;
+  const syncEvZoom = () => map.getContainer().classList.toggle("ev-hidden", map.getZoom() < EV_MIN_ZOOM);
+  map.on("zoomend", syncEvZoom);
+  syncEvZoom();
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer · กล้อง: Longdo Traffic, iTIC, กรมทางหลวง',
@@ -93,6 +100,8 @@
     roadLines: L.layerGroup().addTo(map),
     events: L.layerGroup().addTo(map),
     news: L.layerGroup().addTo(map),
+    warnings: L.layerGroup().addTo(map),
+    traffy: L.layerGroup().addTo(map),
   };
   map.createPane("water").style.zIndex = 450;
   L.control.layers(null, {
@@ -101,9 +110,11 @@
     "ระดับน้ำแม่น้ำ/คลองหลัก": layers.river,
     "สถานีวัดฝน": layers.rain,
     "แนวคลองและแม่น้ำ (ฟ้า = ไม่ท่วม)": layers.canalLines,
-    "เหตุบนถนน (กรมทางหลวง/iTIC)": layers.events,
+    "เหตุบนถนน (กรมทางหลวง/iTIC · ซูมเข้าเพื่อดูหมุด)": layers.events,
     "ถนนที่มีรายงาน": layers.roadLines,
     "ข่าว (กรองเวลา/หัวข้อได้ที่แถบบนแผนที่)": layers.news,
+    "ประกาศเตือนภัย (จากข่าว)": layers.warnings,
+    "Traffy Fondue (ประชาชนแจ้งน้ำท่วม)": layers.traffy,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
@@ -112,6 +123,7 @@
     `<b>เขต</b>${Object.values(LEVEL).map((l) => `<div><i class="sq" style="background:${l.hex}"></i>${l.th}</div>`).join("")}` +
     `<b>จุดวัดน้ำ</b>${["overbank", "critical", "warning", "normal", "unknown"].map((k) => `<div><i style="background:${STATUS[k].hex}"></i>${STATUS[k].th}</div>`).join("")}` +
     `<b>เหตุบนถนน / ถนน</b>${Object.values(ROADC).map((r) => `<div><i class="sq" style="background:${r.hex}"></i>${r.th}</div>`).join("")}` +
+    `<b>Traffy Fondue (ประชาชนแจ้ง)</b>${Object.values(TRAFFY_ST).map((t) => `<div><i style="background:${t.hex}"></i>${t.th}</div>`).join("")}` +
     `<b>แนวคลอง / แม่น้ำ</b><div><i class="ln" style="background:${CANAL_COLOR.normal}"></i>คลอง ไม่ท่วม</div>` +
     `<div><i class="ln thick" style="background:${CANAL_COLOR.normal}"></i>แม่น้ำ ไม่ท่วม</div>` +
     `<div><i class="ln" style="background:${CANAL_COLOR.warning}"></i><i class="ln" style="background:${CANAL_COLOR.critical};margin-left:-3px"></i><i class="ln" style="background:${CANAL_COLOR.overbank};margin-left:-3px"></i>ช่วง 1.5 กม. รอบจุดวัดที่น้ำสูง → ล้นตลิ่ง</div></div>`;
@@ -288,42 +300,94 @@
   // Read a filter control; tolerate a cached older page that lacks it
   const val = (sel, dflt = "") => { const el = $(sel); return el ? (el.type === "checkbox" ? el.checked : el.value.trim()) : dflt; };
   const newsCats = new Set();
-  let newsWin = "1440";
+  // One reporting-time window for news, road incidents and warnings (minutes; "0" = all)
+  let timeWin = "1440";
+
+  // Same rules as fetch_data.dedupe_events, so data written by an older fetcher also shows once per incident
+  const EV_PASS = /\((ผ่านได้|ผ่านไม่ได้)\)/;
+  const EV_KM = /กม\.?\s*ที่\s*(\d+\+\d+)(?:\s*-\s*(\d+\+\d+))?/;
+  function normalizeEvents(events) {
+    const kmApprox = (a, b) => Math.hypot((a.lat - b.lat) * 110.57, (a.lon - b.lon) * 111.32 * Math.cos(a.lat * Math.PI / 180));
+    const kept = [];
+    for (const e of [...events].sort((a, b) => (a.start < b.start ? 1 : -1))) {
+      const pass = (e.title.match(EV_PASS) || [])[1];
+      if (pass === "ผ่านได้" && e.color === "red") e.color = "orange";   // officially passable
+      if (pass === "ผ่านไม่ได้") e.color = "red";
+      if (e.km === undefined) {
+        const m = e.text.match(EV_KM);
+        e.km = m ? m[1] + (m[2] && m[2] !== m[1] ? "–" + m[2] : "") : null;
+      }
+      const key = e.title.replace(EV_PASS, "").trim() + "|" + (e.km || "");
+      const same = kept.find((k) => k._key === key && k.kind === e.kind && (e.km || kmApprox(k, e) <= 0.8));
+      if (same) same.repeats = (same.repeats || 0) + 1 + (e.repeats || 0);
+      else kept.push(Object.assign(e, { _key: key }));
+    }
+    return kept;
+  }
 
   function filteredEvents() {
     if (!DATA) return [];
     const q = val("#rq");
     const col = val("#rcolor");
     const off = val("#rofficial", false);
-    const win = val("#rtime", "active");
+    const win = val("#rtime", timeWin);
     return (DATA.events || []).filter((e) =>
       (win === "active" ? new Date(e.stop) >= Date.now() : (win === "0" || minsAgo(e.start) <= +win)) &&
       (!q || e.title.includes(q) || e.text.includes(q) || (e.district || "").includes(q)) &&
       (!col || e.color === col) && (!off || e.official));
   }
 
-  function filteredNews() {
+  function filteredNews({ topics = true } = {}) {
     if (!DATA) return [];
     const q = val("#nq");
-    const win = +val("#ntime", newsWin);
+    const win = +val("#ntime", timeWin);
     return DATA.news.filter((n) => (!win || minsAgo(n.time) <= win) &&
       (!q || n.title.includes(q) || n.districts.some((d) => d.includes(q))) &&
-      (!newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
+      (!topics || !newsCats.size || [...newsCats].some((c) => (c === "social" ? n.kind === "social" : n.categories.includes(c)))));
   }
+  const isWarning = (n) => n.categories.includes("warning");
 
-  // one pin per district, with the number of matching headlines
-  function drawNewsPins(news) {
-    layers.news.clearLayers();
+  // Traffy Fondue citizen reports: many points, so drawn as small canvas circles
+  let TRAFFY = null;
+  const traffyRenderer = L.canvas({ padding: 0.3 });
+  function filteredTraffy() {
+    if (!TRAFFY) return [];
+    const win = +timeWin;
+    return TRAFFY.reports.filter((t) => !win || minsAgo(t.time) <= win);
+  }
+  function traffyPopup(t) {
+    const st = TRAFFY_ST[t.state] || TRAFFY_ST.working;
+    return `<b>ประชาชนแจ้งน้ำท่วม (Traffy Fondue)</b><br><span class="pill" style="background:${st.hex}">${st.th}</span>
+      ${t.depth_cm ? ` <b>ลึก ~${t.depth_cm} ซม.</b>` : ""}<br>${esc(t.text)}${t.text.length >= 100 ? "…" : ""}
+      ${t.photo ? `<img class="tr-photo" loading="lazy" alt="" src="${safeUrl(TRAFFY.photo_base + t.photo)}">` : ""}
+      <br><small>${fmtTime(t.time)}${t.district ? " · เขต" + esc(t.district) : ""} · ยังไม่ยืนยัน</small>
+      <br><a href="${safeUrl(TRAFFY.link_base + encodeURIComponent(t.id))}" target="_blank" rel="noopener">ดูเรื่อง ${esc(t.id)} ที่ Traffy</a>`;
+  }
+  function drawTraffy() {
+    layers.traffy.clearLayers();
+    const r = map.getZoom() >= 14 ? 6 : map.getZoom() >= 12 ? 4 : 3;
+    filteredTraffy().forEach((t) => {
+      const st = TRAFFY_ST[t.state] || TRAFFY_ST.working;
+      L.circleMarker([t.lat, t.lon], { renderer: traffyRenderer, radius: t.depth_cm >= 45 ? r + 1 : r, color: "#fff", weight: 0.6,
+        fillColor: st.hex, fillOpacity: 0.8 }).bindPopup(() => traffyPopup(t), { maxWidth: 280 }).addTo(layers.traffy);
+    });
+  }
+  map.on("zoomend", () => { if (TRAFFY) drawTraffy(); });
+
+  // one pin per district, with the number of matching headlines; warnings get their own layer
+  function drawNewsPins(news, layer = layers.news, warn = false) {
+    layer.clearLayers();
     const byDist = new Map();
     news.forEach((n) => n.districts.forEach((d) => { if (!byDist.has(d)) byDist.set(d, []); byDist.get(d).push(n); }));
     for (const [d, items] of byDist) {
       const z = byId[d];
       if (!z) continue;
-      L.marker([z.lat, z.lon], { zIndexOffset: 400, title: `ข่าว ${d}`, icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
-        html: `<div class="news-pin">📰 ${items.length}</div>` }) })
-        .bindPopup(`<b>ข่าวในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
+      L.marker(warn ? [z.lat + 0.004, z.lon + 0.006] : [z.lat, z.lon], { zIndexOffset: warn ? 450 : 400, title: `${warn ? "เตือนภัย" : "ข่าว"} ${d}`,
+        icon: L.divIcon({ className: "", iconSize: [34, 22], iconAnchor: [17, 11],
+          html: `<div class="news-pin${warn ? " warn" : ""}">${warn ? "📢" : "📰"} ${items.length}</div>` }) })
+        .bindPopup(`<b>${warn ? "ประกาศเตือนภัย" : "ข่าว"}ในเขต${esc(d)}</b> <small>(${items.length})</small><ul class="pop-news">${items.slice(0, 6).map((n) =>
           `<li><a href="${safeUrl(n.link)}" target="_blank" rel="noopener">${esc(n.title)}</a><br><small>${fmtTime(n.time)}${n.via && n.via[d] ? " · จับคู่จาก " + esc(n.via[d]) : ""}</small></li>`).join("")}</ul>`, { maxWidth: 320 })
-        .addTo(layers.news);
+        .addTo(layer);
     }
   }
 
@@ -444,6 +508,7 @@
   }
 
   function renderRoads() {
+    syncTimebar();
     if (!$("#rlist")) { drawEvents(filteredEvents()); return; }
     const rank = (e) => -ROADC[e.color].rank;
     const shown = filteredEvents();
@@ -452,8 +517,8 @@
     const n = (c) => shown.filter((e) => e.color === c).length;
     $("#rcount").innerHTML = `${list.length} รายงาน · <b style="color:${ROADC.red.hex}">แดง ${n("red")}</b> · <b style="color:${ROADC.orange.hex}">ส้ม ${n("orange")}</b> · เหลือง ${n("yellow")} · เขียว ${n("green")} · แตะเพื่อดูบนแผนที่`;
     $("#rlist").innerHTML = list.slice(0, 200).map((e) => `<li class="ev" data-ev="${esc(e.id)}"><span class="pill" style="background:${ROADC[e.color].hex}">${ROADC[e.color].th}</span>
-      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}</b>
-      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
+      ${e.official ? `<span class="tag official">${esc(e.source)}</span>` : ""}<b>${esc(e.title)}${e.km ? ` · กม. ${esc(e.km)}` : ""}</b>
+      <span class="m">${esc(e.text.slice(0, 140))}</span><span class="m">${fmtTime(e.start)}${e.repeats ? ` · อัปเดต/แจ้งซ้ำ ${e.repeats} ครั้ง` : ""}${e.district ? " · เขต" + esc(e.district) : ""}${e.depth_cm ? ` · ลึก ~${e.depth_cm} ซม.` : ""}</span></li>`).join("") || `<li class="empty">ไม่มีรายงานที่ตรงเงื่อนไข</li>`;
     document.querySelectorAll("#rlist li[data-ev]").forEach((li) => li.addEventListener("click", () => {
       const m = eventMarkers[li.dataset.ev];
       if (!m) return;
@@ -548,18 +613,40 @@
     if (move && window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
 
-  function syncNewsbar(list) {
-    const win = val("#ntime", newsWin);
-    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === win)));
-    const pinned = list.filter((n) => n.districts.length).length;
-    if ($("#nbcount")) $("#nbcount").textContent = `${pinned} ข่าว`;
+  const pinnedCount = (list) => list.filter((n) => n.districts.some((d) => byId[d])).length;
+  function syncTimebar() {
+    if (!$("#newsbar") || !DATA) return;
+    document.querySelectorAll("#mntime button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.win === timeWin)));
+    const counts = {
+      news: pinnedCount(filteredNews().filter((n) => !isWarning(n))),
+      events: filteredEvents().length,
+      warnings: pinnedCount(filteredNews({ topics: false }).filter(isWarning)),
+      traffy: TRAFFY ? filteredTraffy().length : "…",
+    };
+    document.querySelectorAll("#mnshow button").forEach((b) => {
+      b.querySelector("b").textContent = counts[b.dataset.layer];
+      b.setAttribute("aria-pressed", String(map.hasLayer(layers[b.dataset.layer])));
+    });
+    const label = { 0: "ทั้งหมด", 15: "15 นาที", 30: "30 นาที", 60: "1 ชม.", 240: "4 ชม.", 1440: "24 ชม." }[timeWin] || "";
+    $("#nbcount").textContent = label;
+  }
+
+  // Set the shared window from any control, mirror it into the tab dropdowns and redraw
+  function setTimeWin(w) {
+    timeWin = w;
+    if ($("#ntime")) $("#ntime").value = w;
+    if ($("#rtime") && [...$("#rtime").options].some((o) => o.value === w)) $("#rtime").value = w;
+    drawTraffy();
+    renderNews();
+    renderRoads();
   }
 
   function renderNews() {
     const d = DATA;
     const list = filteredNews();
-    drawNewsPins(list);
-    syncNewsbar(list);
+    drawNewsPins(list.filter((n) => !isWarning(n)));
+    drawNewsPins(filteredNews({ topics: false }).filter(isWarning), layers.warnings, true);
+    syncTimebar();
     if (!$("#nlist")) return;
     const official = (d.official || []).map((o) =>
       `<li><span class="tag official">GDACS ${esc(o.level)}</span><a href="${safeUrl(o.link)}" target="_blank" rel="noopener">${esc(o.title)}</a></li>`).join("");
@@ -631,25 +718,29 @@
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
   ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", renderDistricts));
   ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
-  ["#rq", "#rcolor", "#rofficial", "#rtime"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
-  ["#nq", "#ntime"].forEach((s) => $(s)?.addEventListener("input", renderNews));
+  ["#rq", "#rcolor", "#rofficial"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
+  $("#nq")?.addEventListener("input", renderNews);
+  $("#ntime")?.addEventListener("input", () => setTimeWin($("#ntime").value));
+  // "ยังมีผลอยู่" exists only for road incidents; other values move the shared window
+  $("#rtime")?.addEventListener("input", () => ($("#rtime").value === "active" ? renderRoads() : setTimeWin($("#rtime").value)));
   document.querySelectorAll("#ncats button, #mncats button").forEach((b) => b.addEventListener("click", () => {
     const c = b.dataset.cat;
     if (newsCats.has(c)) newsCats.delete(c); else newsCats.add(c);
     document.querySelectorAll(`#ncats button[data-cat="${c}"], #mncats button[data-cat="${c}"]`).forEach((x) => x.setAttribute("aria-pressed", String(newsCats.has(c))));
     renderNews();
   }));
-  // map news bar: time segments mirror the news-tab dropdown
-  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => {
-    if ($("#ntime")) $("#ntime").value = b.dataset.win;
-    newsWin = b.dataset.win;
-    renderNews();
+  // map time bar: one window for news, road incidents and warnings; chips show/hide each layer
+  document.querySelectorAll("#mntime button").forEach((b) => b.addEventListener("click", () => setTimeWin(b.dataset.win)));
+  document.querySelectorAll("#mnshow button").forEach((b) => b.addEventListener("click", () => {
+    const lyr = layers[b.dataset.layer];
+    if (map.hasLayer(lyr)) map.removeLayer(lyr); else lyr.addTo(map);
+    syncTimebar();
   }));
   const nbToggle = $("#nbtoggle");
   const setNewsbar = (open) => { $("#newsbar")?.classList.toggle("closed", !open); nbToggle?.setAttribute("aria-expanded", String(open)); };
   nbToggle?.addEventListener("click", () => setNewsbar($("#newsbar").classList.contains("closed")));
   setNewsbar(window.innerWidth >= 800);
-  map.on("overlayadd overlayremove", (e) => { if (e.layer === layers.news) $("#newsbar").hidden = e.type === "overlayremove"; });
+  map.on("overlayadd overlayremove", syncTimebar);
   $("#links").innerHTML = LINKS.map(([t, u]) => `<li><a href="${u}" target="_blank" rel="noopener">${esc(t)}</a></li>`).join("");
 
   // ------------------------------------------------------------- my location (GPS)
@@ -787,6 +878,16 @@
     });
   }
 
+  function loadTraffy() {
+    if (!DATA || !DATA.traffy) return;
+    fetch(TRAFFY_URL + "?t=" + encodeURIComponent(DATA.generated_at)).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (!j || !Array.isArray(j.reports)) return;
+      TRAFFY = j;
+      drawTraffy();
+      syncTimebar();
+    }).catch(() => {});
+  }
+
   async function load() {
     try {
       if (!GEO) GEO = await (await fetch(DISTRICTS_URL)).json();
@@ -796,12 +897,14 @@
       const next = await r.json();
       if (!next.districts) throw new Error("ข้อมูลรุ่นเก่า รอรอบอัปเดตถัดไป");
       DATA = next;
+      DATA.events = normalizeEvents(DATA.events || []);
       Object.keys(byId).forEach((k) => delete byId[k]);
       DATA.districts.forEach((z) => (byId[z.id] = z));
       drawMap(DATA);
       for (const fn of [renderSummary, renderDistricts, renderCanals, renderNews, renderSources, renderMine, renderRoads]) {
         try { fn(); } catch (err) { console.error(fn.name, err); }
       }
+      loadTraffy();
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");
@@ -821,6 +924,7 @@
   }
 
   $("#reload").addEventListener("click", () => { load(); loadRadar(); });
+  $("#reportBtn")?.addEventListener("click", () => $("#report").showModal());
   const t = pref("fw-tab");
   if (t && document.getElementById("tab-" + t)) selectTab(t);
   load();
