@@ -214,9 +214,7 @@
   // ------------------------------------------------------------- load (live from ThaiWater)
   async function load() {
     try {
-      const r = await fetch(API + "?t=" + Date.now());
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      ST = parse(await r.json());
+      ST = await TW.waterlevel();
       const latest = ST.map((s) => s.time).filter(Boolean).sort().pop();
       $("#updated").textContent = `ระดับน้ำล่าสุด ${fmt(latest)} · ${ST.length} สถานี`;
       drawMap(); renderSum(); renderRivers(); renderRegions(); renderFound();
