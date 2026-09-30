@@ -269,6 +269,8 @@
 
   // ------------------------------------------------------------- load
   async function load() {
+    // Observed rain comes from ThaiWater and does not wait for the forecast
+    if (NATION) loadObs();
     try {
       if (!GEO) { GEO = await (await fetch(DISTRICTS_URL)).json(); drawDistricts(); }
       const lat = GEO.features.map((f) => f.properties.lat).join(",");
@@ -280,7 +282,6 @@
       times = FC[0].time;
       paint(); renderTop(); renderNow();
       if (selected) select(selected);
-      if (NATION) loadObs();
       $("#updated").textContent = `พยากรณ์ ณ ${new Date().toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })} · เริ่ม ${fmtHour(times[0])}`;
     } catch (e) {
       // Open-Meteo answers a burst limit without CORS headers, which shows up as "Failed to fetch"
