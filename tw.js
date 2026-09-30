@@ -12,7 +12,8 @@ window.TW = (() => {
     for (const wait of [0, 3000, 10000, 30000]) {
       if (wait) await sleep(wait);
       // 5-minute cache key: quick reloads share the browser cache, data still refreshes
-      const r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / 300000));
+      // ThaiWater throttles requests whose Referer is another site (HTTP 429); CORS only needs Origin
+      const r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / 300000), { referrerPolicy: "no-referrer" });
       if (r.status === 429 || r.status === 503) continue;
       if (!r.ok) throw new Error(`ThaiWater ${path}: HTTP ${r.status}`);
       return r.json();
