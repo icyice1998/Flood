@@ -5,10 +5,24 @@ window.TW = (() => {
   const API = "https://api-v3.thaiwater.net/api/v1/thaiwater30/";
   const num = (x) => (x == null || x === "" ? null : +x);
   const th = (o) => (o && (o.th || o.en)) || "";
-  const get = async (path) => {
-    const r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Date.now());
-    if (!r.ok) throw new Error(`ThaiWater ${path}: HTTP ${r.status}`);
-    return r.json();
+  // ThaiWater rate-limits bursts (HTTP 429), so requests go one at a time and a 429 is retried with backoff
+  let queue = Promise.resolve();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function fetchRetry(path) {
+    for (const wait of [0, 3000, 10000, 30000]) {
+      if (wait) await sleep(wait);
+      // 5-minute cache key: quick reloads share the browser cache, data still refreshes
+      const r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / 300000));
+      if (r.status === 429 || r.status === 503) continue;
+      if (!r.ok) throw new Error(`ThaiWater ${path}: HTTP ${r.status}`);
+      return r.json();
+    }
+    throw new Error("ThaiWater ไม่ว่าง (HTTP 429) ลองใหม่อีกครั้งภายหลัง");
+  }
+  const get = (path) => {
+    const job = queue.then(() => fetchRetry(path));
+    queue = job.catch(() => {});
+    return job;
   };
   const daysOld = (d) => (Date.now() - new Date(String(d).slice(0, 10) + "T00:00:00+07:00")) / 86400000;
 
