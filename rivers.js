@@ -10,6 +10,17 @@
     ["แม่น้ำมูล", "we"], ["แม่น้ำชี", "we"],
   ];
   const MAIN = new Set(RIVERS.map((r) => r[0]));
+  // Large dams that release into each river (directly or through a tributary)
+  const DAM_RIVER = {
+    "ภูมิพล": ["แม่น้ำปิง", "แม่น้ำเจ้าพระยา"], "แม่งัดสมบูรณ์ชล": ["แม่น้ำปิง"], "แม่กวงอุดมธารา": ["แม่น้ำปิง"],
+    "สิริกิติ์": ["แม่น้ำน่าน", "แม่น้ำเจ้าพระยา"], "แควน้อยบำรุงแดน": ["แม่น้ำน่าน"], "กิ่วลม": ["แม่น้ำวัง"], "กิ่วคอหมา": ["แม่น้ำวัง"],
+    "แม่มอก": ["แม่น้ำยม"], "ป่าสักชลสิทธิ์": ["แม่น้ำป่าสัก", "แม่น้ำเจ้าพระยา"], "ทับเสลา": ["แม่น้ำเจ้าพระยา"], "กระเสียว": ["แม่น้ำท่าจีน"],
+    "ศรีนครินทร์": ["แม่น้ำแม่กลอง"], "วชิราลงกรณ": ["แม่น้ำแควน้อย", "แม่น้ำแม่กลอง"], "ขุนด่านปราการชล": ["แม่น้ำนครนายก", "แม่น้ำบางปะกง"],
+    "นฤบดินทรจินดา": ["แม่น้ำบางปะกง"], "อุบลรัตน์": ["แม่น้ำชี"], "ลำปาว": ["แม่น้ำชี"], "จุฬาภรณ์": ["แม่น้ำชี"],
+    "สิรินธร": ["แม่น้ำมูล"], "ลำตะคอง": ["แม่น้ำมูล"], "ลำพระเพลิง": ["แม่น้ำมูล"], "มูลบน": ["แม่น้ำมูล"], "ลำแชะ": ["แม่น้ำมูล"],
+    "ลำนางรอง": ["แม่น้ำมูล"], "ปากมูล": ["แม่น้ำมูล"],
+  };
+  let DAMS = [];
   const LEVEL = [
     { max: 10, th: "น้อยวิกฤต", hex: "#a1887f" },
     { max: 30, th: "น้อย", hex: "#d7ccc8" },
@@ -33,6 +44,21 @@
     gradient: { 0.35: "#4fc3f7", 0.55: "#ffee58", 0.75: "#ffa726", 0.9: "#ef5350", 1.0: "#b71c1c" } }).addTo(map);
   const dots = L.layerGroup().addTo(map);
   const hl = L.layerGroup().addTo(map);
+  const damLayer = L.layerGroup().addTo(map);
+  const damIcon = (d) => L.divIcon({ className: "", iconSize: [18, 18], iconAnchor: [9, 9],
+    html: `<div class="dam-ic" style="background:${TW.cls(TW.DAM, d.pct).hex}" title="${esc(d.name)}"></div>` });
+  function damPopup(d) {
+    const c = TW.cls(TW.DAM, d.pct);
+    return `<b>เขื่อน${esc(d.name)}</b><br>${esc(d.province)} · ${esc(d.basin)}<br><span class="pill" style="background:${c.hex}">${c.th} ${d.pct.toFixed(1)}%</span>
+      ${d.storage != null ? ` ${Math.round(d.storage).toLocaleString()} / ${Math.round(d.cap || 0).toLocaleString()} ล้าน ลบ.ม.` : ""}
+      <br>ไหลเข้า ${d.inflow ?? "–"} · <b>ระบาย ${d.release ?? "–"}</b> ล้าน ลบ.ม./วัน${d.spill ? ` · ล้นทางระบาย ${d.spill}` : ""}
+      ${DAM_RIVER[d.name] ? `<br>ส่งน้ำลง: ${DAM_RIVER[d.name].map(esc).join(", ")}` : ""}<br><small>${esc(d.date)} · ThaiWater/กรมชลประทาน/กฟผ.</small>`;
+  }
+  function drawDams() {
+    damLayer.clearLayers();
+    if (!$("#damchk").checked) return;
+    for (const d of DAMS) L.marker([d.lat, d.lon], { icon: damIcon(d), zIndexOffset: 500 }).bindPopup(damPopup(d)).addTo(damLayer);
+  }
   $("#legend").innerHTML = `<b>% ความจุลำน้ำ</b>${LEVEL.map((l, i) => `<div><i style="background:${l.hex}"></i>${l.th}${i < 4 ? ` &lt;${l.max}%` : " &gt;100%"}</div>`).join("")}
     <div><span class="up">▲</span> กำลังขึ้น <span class="down">▼</span> กำลังลง</div>`;
 
@@ -71,6 +97,7 @@
         .bindPopup(popup(s)).addTo(dots);
     }
   }
+  $("#damchk").addEventListener("change", drawDams);
   ["#heat", "#dots", "#mainonly"].forEach((id) => $(id).addEventListener("change", () => {
     if (id === "#heat") { if ($("#heat").checked) heat.addTo(map); else map.removeLayer(heat); }
     drawMap(); renderSum(); renderRegions();
@@ -122,7 +149,9 @@
       ${s.trend > 0.02 ? `<text x="${L0 + i * bw + bw / 2}" y="${y(s.pct) - 2}" text-anchor="middle" class="ax" fill="#c62828">▲</text>` : ""}`).join("");
     const bank = `<line x1="${L0}" x2="${W}" y1="${y(100)}" y2="${y(100)}" stroke="#c62828" stroke-dasharray="4 3"/><text class="ax" x="${W - 2}" y="${y(100) - 2}" text-anchor="end">ตลิ่ง 100%</text>`;
     const labels = ss.map((s, i) => (i === 0 || i === ss.length - 1 || i === Math.floor(ss.length / 2)) ? `<text class="ax" x="${L0 + i * bw + bw / 2}" y="${H - 14}" text-anchor="middle">${esc(s.province.slice(0, 8))}</text>` : "").join("");
-    box.innerHTML = `<h4>${esc(river)}</h4><small class="note">ต้นน้ำ (ซ้าย) → ปลายน้ำ (ขวา) · แท่ง = % ความจุ · ▲ = กำลังขึ้น</small>
+    const ups = DAMS.filter((d) => (DAM_RIVER[d.name] || []).includes(river));
+    const damBox = ups.length ? `<div class="rv-dams"><b>เขื่อนต้นน้ำ:</b> ${ups.map((d) => `เขื่อน${esc(d.name)} <b style="color:${TW.cls(TW.DAM, d.pct).hex === "#fff176" ? "#9e8a00" : TW.cls(TW.DAM, d.pct).hex}">${d.pct.toFixed(0)}%</b> ระบาย ${d.release ?? "–"} ล้าน ลบ.ม./วัน`).join(" · ")}</div>` : "";
+    box.innerHTML = `<h4>${esc(river)}</h4>${damBox}<small class="note">ต้นน้ำ (ซ้าย) → ปลายน้ำ (ขวา) · แท่ง = % ความจุ · ▲ = กำลังขึ้น</small>
       <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="แนวลำน้ำ${esc(river)}">
         <text class="ax" x="0" y="${T + 6}">${top.toFixed(0)}%</text><text class="ax" x="0" y="${H - B}">0</text>
         <line x1="${L0}" x2="${W}" y1="${H - B}" y2="${H - B}" stroke="#90a4ae"/>${bank}${bars}${labels}
@@ -138,6 +167,19 @@
   function flyTo(s) {
     map.setView([s.lat, s.lon], 10);
     L.popup().setLatLng([s.lat, s.lon]).setContent(popup(s)).openOn(map);
+  }
+
+  function renderDamList() {
+    const rows = DAMS.filter((d) => DAM_RIVER[d.name]).sort((a, b) => b.pct - a.pct);
+    $("#damlist").innerHTML = `<table class="wtab"><tr><th>เขื่อน</th><th>%</th><th>ไหลเข้า</th><th>ระบาย</th></tr>
+      ${rows.map((d, i) => `<tr data-dam="${i}"><td>${esc(d.name)} <small>→ ${esc(DAM_RIVER[d.name][0].replace("แม่น้ำ", ""))}</small></td>
+        <td style="font-weight:700;color:${TW.cls(TW.DAM, d.pct).hex === "#fff176" ? "#9e8a00" : TW.cls(TW.DAM, d.pct).hex}">${d.pct.toFixed(0)}</td><td>${d.inflow ?? "–"}</td><td>${d.release ?? "–"}</td></tr>`).join("")}</table>
+      <small class="note">ล้าน ลบ.ม./วัน · ข้อมูลรายวัน ${esc(rows[0] ? rows[0].date : "")}</small>`;
+    $("#damlist").querySelectorAll("tr[data-dam]").forEach((tr) => tr.addEventListener("click", () => {
+      const d = rows[+tr.dataset.dam];
+      map.setView([d.lat, d.lon], 10);
+      L.popup().setLatLng([d.lat, d.lon]).setContent(damPopup(d)).openOn(map);
+    }));
   }
 
   function renderRegions() {
@@ -178,6 +220,7 @@
       const latest = ST.map((s) => s.time).filter(Boolean).sort().pop();
       $("#updated").textContent = `ระดับน้ำล่าสุด ${fmt(latest)} · ${ST.length} สถานี`;
       drawMap(); renderSum(); renderRivers(); renderRegions(); renderFound();
+      TW.dams().then((d) => { DAMS = d.large; drawDams(); renderDamList(); if (sel) renderProfile(sel); }).catch(() => {});
       if (sel) renderProfile(sel);
     } catch (e) {
       $("#updated").textContent = "โหลดข้อมูล ThaiWater ไม่ได้: " + e.message;

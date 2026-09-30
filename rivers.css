@@ -33,3 +33,19 @@
 .how { margin-top: 14px; font-size: .86rem; }
 .how summary { cursor: pointer; font-weight: 600; }
 .how ul { padding-left: 18px; }
+.seg.wide { display: flex; width: 100%; margin-bottom: 8px; }
+.seg.wide button { flex: 1; font-size: .82rem; padding: 6px 4px; }
+.wtab { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.wtab th, .wtab td { padding: 3px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.wtab td:nth-child(n+2), .wtab th:nth-child(n+2) { text-align: right; }
+.wtab tr[data-k] { cursor: pointer; }
+.wtab tr[data-k]:hover { background: var(--bg); }
+.dlist { display: grid; gap: 6px; }
+.drow { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: .86rem; }
+.drow:hover { background: var(--bg); }
+.drow .dp { font-weight: 700; }
+.drow .dbar { grid-column: 1 / -1; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.drow .dbar i { display: block; height: 100%; }
+.drow .dm { grid-column: 1 / -1; color: var(--muted); font-size: .78rem; }
+.rv-dams { font-size: .82rem; margin-top: 6px; }
+.dam-ic { width: 14px; height: 14px; transform: rotate(45deg); border: 2px solid #263238; box-shadow: 0 1px 3px rgba(0,0,0,.4); }

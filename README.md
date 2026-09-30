@@ -136,6 +136,20 @@ The district and canal/river tabs show only the top 5 by severity. To see more:
 - press "แสดงทั้งหมด";
 - or tap an area on the map. The tap is matched to a district by point-in-polygon, because the Traffy canvas layer sits above the district polygons. Both tabs then narrow to that district, under a "📍 เขต…" chip with ✕ to clear it.
 
+## Nationwide water (`water.html`) and shared ThaiWater loader (`tw.js`)
+
+`tw.js` loads ThaiWater live in the browser: river telemetry (`public/waterlevel_load`), dams and reservoirs (`analyst/dam`) and rain gauges (`public/rain_24h`). Large dams listed twice under RID and EGAT are deduplicated by name. Medium and small reservoirs older than 7 days are dropped, and so are stations outside Thailand.
+
+- **💧 น้ำทั่วประเทศ.** One heatmap, switchable between dam/reservoir fill (% of normal storage), river level (% of bank) and 24 h rainfall.
+  - Summary tiles: total fill of the large dams and today's inflow and release, reservoirs ≥80%, overbank stations, gauges with >90 mm.
+  - Tables by region and by the 25 main basins; tapping a row zooms the map.
+  - Large dams ranked by % with storage, inflow and release, plus search across all reservoirs.
+- **🌊 ติดตามมวลน้ำ (dams).** A dam layer (diamonds coloured by % storage), a table of the main dams that feed the tracked rivers, and each river profile's "เขื่อนต้นน้ำ" line with % and daily release. For example, Bhumibol and Sirikit feed the Chao Phraya, and Pa Sak Jolasid feeds the Pa Sak.
+- **🌧 พยากรณ์ฝน (national).** `rain.html?scope=th` adds a nationwide scope.
+  - It forecasts 48 h for 77 province reference points (`data/provinces.geojson`: the median position of ThaiWater rain gauges per province), with the same slider, ranking, chart and model comparison.
+  - It adds a heatmap of observed rain in the last 24 h (ThaiWater gauges), with the observed maximum shown per province.
+  - If Open-Meteo rate-limits a burst, the page retries after a minute.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

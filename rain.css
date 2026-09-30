@@ -38,3 +38,9 @@
 .gpsbtn { width: 100%; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); border-radius: 8px; padding: 7px; font-weight: 600; margin-bottom: 8px; }
 .rain-me { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: .9rem; }
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35); }
+.scope { display: flex; margin-bottom: 8px; }
+.scope a { flex: 1; text-align: center; font-size: .82rem; padding: 6px 4px; border: 1px solid var(--line); color: var(--text); text-decoration: none; background: var(--surface); }
+.scope a:first-child { border-radius: 6px 0 0 6px; } .scope a:last-child { border-radius: 0 6px 6px 0; }
+.scope a[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.obsctl { position: absolute; right: 10px; top: 10px; z-index: 500; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: .82rem; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+.toplist .obs { color: #b23c17; }
