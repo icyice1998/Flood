@@ -8,14 +8,14 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=13">
-<link rel="stylesheet" href="rain.css?v=2">
+<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="rain.css?v=3">
 </head>
 <body>
 <header class="top">
   <div class="brand">
     <h1>Floodwatcher <span>พยากรณ์ฝน</span></h1>
-    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html" aria-current="page">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a></nav>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html" aria-current="page">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a><a href="rivers.html">🌊 ติดตามมวลน้ำ</a><a href="water.html">💧 น้ำทั่วประเทศ</a></nav>
   </div>
   <div class="status">
     <span id="updated">กำลังโหลด…</span>
@@ -26,10 +26,14 @@
 <main class="layout">
   <aside class="panel">
     <section class="tab">
+      <div class="seg wide scope" id="scope" role="group" aria-label="พื้นที่">
+        <a href="rain.html" data-scope="bkk">กรุงเทพฯ-ปริมณฑล (72 เขต)</a>
+        <a href="rain.html?scope=th" data-scope="th">ทั่วประเทศ (77 จังหวัด)</a>
+      </div>
       <button type="button" id="gps" class="gpsbtn">📍 ฝนที่ตำแหน่งของฉัน</button>
       <div class="rain-me" id="me" hidden></div>
       <div class="rain-now" id="now"></div>
-      <h3 class="rh">เขตที่ฝนมากที่สุด <small id="toplabel"></small></h3>
+      <h3 class="rh"><span data-unit="จังหวัดที่ฝนมากที่สุด">เขตที่ฝนมากที่สุด</span> <small id="toplabel"></small></h3>
       <div class="seg" id="horizon" role="group" aria-label="ช่วงเวลาสะสม">
         <button type="button" data-h="3">3 ชม.</button>
         <button type="button" data-h="6">6 ชม.</button>
@@ -42,7 +46,7 @@
       </div>
       <ol class="toplist" id="top"></ol>
 
-      <h3 class="rh" id="dname">เลือกเขตบนแผนที่หรือในรายการ</h3>
+      <h3 class="rh" id="dname"><span data-unit="เลือกจังหวัดบนแผนที่หรือในรายการ">เลือกเขตบนแผนที่หรือในรายการ</span></h3>
       <div id="chart" class="chart" aria-live="polite"></div>
       <div class="models" id="models"></div>
 
@@ -64,6 +68,7 @@
     </div>
     <div id="view-map" class="view">
       <div id="map" aria-label="แผนที่ฝนรายเขต"></div>
+      <div class="obsctl" id="obsctl" hidden><label><input type="checkbox" id="obschk" checked> ☔ ฝนที่ตกแล้ว 24 ชม. (ThaiWater)</label></div>
       <div class="timebar" id="timebar">
         <button type="button" id="play" aria-label="เล่น">▶</button>
         <input type="range" id="hour" min="0" max="47" value="0" aria-label="ชั่วโมงข้างหน้า">
@@ -95,6 +100,8 @@
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="rain.js?v=2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="tw.js?v=1"></script>
+<script src="rain.js?v=3"></script>
 </body>
 </html>

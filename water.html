@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher น้ำทั่วประเทศ</title>
+<meta name="description" content="ภาพรวมน้ำทั่วประเทศไทยแบบเรียลไทม์: ระดับน้ำแม่น้ำ น้ำในเขื่อนและอ่างเก็บน้ำ ฝน 24 ชั่วโมง แสดงเป็น heatmap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="rivers.css?v=2">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>น้ำทั่วประเทศ</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a><a href="rivers.html">🌊 ติดตามมวลน้ำ</a><a href="water.html" aria-current="page">💧 น้ำทั่วประเทศ</a></nav>
+  </div>
+  <div class="status"><span id="updated">กำลังโหลด…</span><button id="reload" type="button">รีเฟรช</button></div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <div class="seg wide" id="metric" role="group" aria-label="heatmap แสดง">
+        <button type="button" data-m="dam" aria-pressed="true">🏞 น้ำในเขื่อน/อ่าง</button>
+        <button type="button" data-m="river">💧 ระดับน้ำแม่น้ำ</button>
+        <button type="button" data-m="rain">🌧 ฝน 24 ชม.</button>
+      </div>
+      <div class="rv-sum" id="sum"></div>
+
+      <h3 class="rh">ตามภาค</h3>
+      <div id="regions"></div>
+
+      <h3 class="rh">ตามลุ่มน้ำ <small>(25 ลุ่มน้ำหลัก)</small></h3>
+      <div id="basins"></div>
+
+      <h3 class="rh">เขื่อนขนาดใหญ่ <small id="damnote"></small></h3>
+      <div class="filters"><input id="q" type="search" placeholder="ค้นหาเขื่อน อ่าง จังหวัด หรือลุ่มน้ำ" aria-label="ค้นหา"></div>
+      <div id="dams"></div>
+
+      <details class="how">
+        <summary>ข้อมูลและวิธีอ่าน</summary>
+        <ul>
+          <li>ข้อมูลสดจาก ThaiWater (สสน.) ซึ่งรวบรวมจากกรมชลประทาน กฟผ. กรมทรัพยากรน้ำ และหน่วยงานอื่น ดึงจากเบราว์เซอร์ทุก 30 นาที</li>
+          <li><b>เขื่อน/อ่าง</b>: % ของความจุที่ระดับเก็บกักปกติ (เขื่อนใหญ่รายวัน อ่างขนาดกลางและอ่างเล็กที่รายงานใน 7 วัน) · ≥80% = น้ำมาก ต้องเฝ้าดูการระบายท้ายเขื่อน · &gt;100% = เกินความจุปกติ</li>
+          <li><b>แม่น้ำ</b>: % ความจุลำน้ำ (ระดับน้ำเทียบตลิ่ง) จากสถานีโทรมาตรทั่วประเทศ</li>
+          <li><b>ฝน 24 ชม.</b>: สถานีวัดฝนกว่า 4,000 แห่ง เกณฑ์กรมอุตุฯ เล็กน้อย 0.1–10 · ปานกลาง 10–35 · หนัก 35–90 · หนักมาก &gt;90 มม.</li>
+          <li>Heatmap ถ่วงน้ำหนักตามค่า จุดร้อนสีแดงคือบริเวณที่น้ำมากที่สุดของตัวแปรที่เลือก</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่น้ำทั่วประเทศ"></div>
+    <div class="rv-ctl">
+      <label><input type="checkbox" id="heat" checked> Heatmap</label>
+      <label><input type="checkbox" id="marks" checked> จุดข้อมูล</label>
+      <label><input type="checkbox" id="medium" checked> อ่างขนาดกลาง/เล็ก</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="tw.js?v=1"></script>
+<script src="water.js?v=1"></script>
+</body>
+</html>

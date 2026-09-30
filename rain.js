@@ -1,6 +1,9 @@
 (() => {
   "use strict";
-  const DISTRICTS_URL = "data/districts.geojson";
+  // ?scope=th switches from Bangkok districts to all 77 provinces (points) plus observed rain from ThaiWater
+  const NATION = new URLSearchParams(location.search).get("scope") === "th";
+  const DISTRICTS_URL = NATION ? "data/provinces.geojson" : "data/districts.geojson";
+  const UNIT = NATION ? "จังหวัด" : "เขต";
   const OM = "https://api.open-meteo.com/v1/forecast";
   const HOURS = 48;
   const MODELS = [["ecmwf_ifs025", "ECMWF"], ["gfs_seamless", "GFS"], ["icon_seamless", "ICON"]];
@@ -24,7 +27,7 @@
   const layerById = {};
 
   // ------------------------------------------------------------- map
-  const map = L.map("map").setView([13.76, 100.55], 10);
+  const map = NATION ? L.map("map", { zoomSnap: 0.5 }).setView([13.2, 101.0], 6) : L.map("map").setView([13.76, 100.55], 10);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18, opacity: 0.6, attribution: "© OpenStreetMap · พยากรณ์: Open-Meteo",
   }).addTo(map);
@@ -53,6 +56,7 @@
     districts.clearLayers();
     L.geoJSON(GEO, {
       style: { weight: 0.8, color: "#607d8b", fillOpacity: 0.05 },
+      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 11, weight: 0.8, color: "#607d8b", fillOpacity: 0.05 }),
       onEachFeature: (f, lyr) => {
         layerById[f.properties.id] = lyr;
         lyr.bindTooltip(f.properties.name, { sticky: true });
@@ -68,10 +72,36 @@
       mm: sum(FC[i].precipitation.slice(0, horizon)), pmax: Math.max(...FC[i].precipitation_probability.slice(0, horizon).map((x) => x || 0)) }))
       .filter((r) => !q || r.name.includes(q) || (r.prov || "").includes(q))
       .sort((a, b) => b.mm - a.mm);
-    $("#toplabel").textContent = `(สะสม ${horizon} ชม. ข้างหน้า)`;
-    $("#top").innerHTML = rows.map((r) => `<li data-id="${esc(r.id)}"><span class="sw" style="background:${colorFor(r.mm, "accum") || "#eceff1"}"></span>${esc(r.name)}
-      <small>${esc(r.prov === "กรุงเทพมหานคร" ? "" : r.prov)}</small><span class="mm">${r.mm.toFixed(1)} มม. <small>(${r.pmax}%)</small></span></li>`).join("");
+    $("#toplabel").textContent = `(คาดสะสม ${horizon} ชม. ข้างหน้า)`;
+    $("#top").innerHTML = rows.map((r) => {
+      const seen = NATION ? obsMaxBy(r.name) : null;
+      return `<li data-id="${esc(r.id)}"><span class="sw" style="background:${colorFor(r.mm, "accum") || "#eceff1"}"></span>${esc(r.name)}
+      <small>${esc(r.prov === "กรุงเทพมหานคร" ? "" : r.prov)}</small><span class="mm">${r.mm.toFixed(1)} มม. <small>(${r.pmax}%)</small></span>
+      ${seen != null ? `<br><small class="obs">ตกแล้ว 24 ชม. สูงสุด ${seen.toFixed(0)} มม.</small>` : ""}</li>`;
+    }).join("");
     document.querySelectorAll("#top li").forEach((li) => li.addEventListener("click", () => select(li.dataset.id, true)));
+  }
+
+  // Observed rain (national scope): ThaiWater gauges, last 24 h
+  let OBS = null;
+  const obsLayer = L.layerGroup();
+  const obsMaxBy = (name) => { const r = (OBS || []).filter((x) => x.province === name); return r.length ? Math.max(...r.map((x) => x.mm)) : null; };
+  function obsLine() {
+    if (!OBS || !OBS.length) return "";
+    const top = OBS.reduce((a, b) => (b.mm > a.mm ? b : a));
+    return `<br>☔ ตกแล้ว 24 ชม. (ThaiWater ${OBS.length} สถานี): สูงสุด <b>${top.mm.toFixed(1)} มม.</b> ที่ ${esc(top.name)} (${esc(top.province)}) · หนักมาก &gt;90 มม. ${OBS.filter((r) => r.mm > 90).length} สถานี`;
+  }
+  async function loadObs() {
+    if (!NATION || !window.TW) return;
+    try {
+      OBS = await TW.rain24();
+      obsLayer.clearLayers();
+      if (L.heatLayer) L.heatLayer(OBS.filter((r) => r.mm >= 1).map((r) => [r.lat, r.lon, Math.min(1, r.mm / 100)]),
+        { radius: 18, blur: 14, maxZoom: 9, max: 1, gradient: { 0.1: "#90caf9", 0.35: "#42a5f5", 0.6: "#ffa726", 0.9: "#c62828" } }).addTo(obsLayer);
+      OBS.filter((r) => r.mm >= 35).forEach((r) => L.circleMarker([r.lat, r.lon], { radius: 3.5, color: "#fff", weight: 0.6, fillColor: TW.cls(TW.RAIN, r.mm).hex, fillOpacity: 0.95 })
+        .bindPopup(`<b>${esc(r.name)}</b><br>${esc(r.province)}<br>ฝนตกแล้ว 24 ชม. <b>${r.mm.toFixed(1)} มม.</b><br><small>${esc(r.time)} · ThaiWater</small>`).addTo(obsLayer));
+      if (FC) { renderNow(); renderTop(); }
+    } catch (e) { OBS = []; }
   }
 
   function renderNow() {
@@ -83,9 +113,10 @@
       for (let h = 0; h < HOURS; h++) if (all.filter((p) => (p[h] || 0) >= 1).length >= 5) return h;
       return -1;
     })();
-    $("#now").innerHTML = `<b class="big">${wet3 ? `ฝน ≥1 มม. ใน 3 ชม. ข้างหน้า ${wet3} เขต` : "3 ชม. ข้างหน้า: ส่วนใหญ่ไม่มีฝนหรือฝนเล็กน้อย"}</b><br>
-      ${firstWet >= 0 ? `ฝนเริ่มกระจาย (≥5 เขต) ประมาณ <b>${fmtHour(times[firstWet])}</b>` : "ยังไม่เห็นช่วงฝนกระจายใน 48 ชม."}<br>
-      สะสม 24 ชม. สูงสุด <b>${max24.toFixed(1)} มม.</b>`;
+    const top24 = GEO.features[all.map((p) => sum(p.slice(0, 24))).indexOf(max24)].properties.name;
+    $("#now").innerHTML = `<b class="big">${wet3 ? `ฝน ≥1 มม. ใน 3 ชม. ข้างหน้า ${wet3} ${UNIT}` : "3 ชม. ข้างหน้า: ส่วนใหญ่ไม่มีฝนหรือฝนเล็กน้อย"}</b><br>
+      ${firstWet >= 0 ? `ฝนเริ่มกระจาย (≥5 ${UNIT}) ประมาณ <b>${fmtHour(times[firstWet])}</b>` : "ยังไม่เห็นช่วงฝนกระจายใน 48 ชม."}<br>
+      คาดสะสม 24 ชม. สูงสุด <b>${max24.toFixed(1)} มม.</b> (${esc(top24)})${obsLine()}`;
   }
 
   async function select(id, fly = false) {
@@ -93,8 +124,12 @@
     paint();
     const i = GEO.features.findIndex((f) => f.properties.id === id);
     const f = GEO.features[i];
-    if (fly) map.fitBounds(layerById[id].getBounds().pad(0.6));
-    $("#dname").textContent = `เขต${f.properties.name} · 48 ชม. ข้างหน้า`;
+    if (fly) {
+      const l = layerById[id];
+      if (l.getBounds) map.fitBounds(l.getBounds().pad(0.6)); else map.setView(l.getLatLng(), 8);
+    }
+    const seen = NATION && OBS ? OBS.filter((r) => r.province === f.properties.name) : [];
+    $("#dname").textContent = `${UNIT}${f.properties.name} · 48 ชม. ข้างหน้า` + (seen.length ? ` · ตกแล้ว 24 ชม. สูงสุด ${Math.max(...seen.map((r) => r.mm)).toFixed(1)} มม.` : "");
     chart(FC[i].precipitation, FC[i].precipitation_probability);
     // model spread for this district only (one small request)
     $("#models").textContent = "กำลังเทียบโมเดล…";
@@ -178,6 +213,11 @@
     return inside;
   }
   function districtAt(lat, lon) {
+    if (NATION) {   // provinces are points: take the nearest one
+      let best = null, bd = Infinity;
+      for (const f of GEO.features) { const d = Math.hypot(f.properties.lat - lat, f.properties.lon - lon); if (d < bd) { bd = d; best = f.properties.id; } }
+      return best;
+    }
     for (const f of GEO.features) {
       const g = f.geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
       if (polys.some((p) => inRing(lon, lat, p[0]) && !p.slice(1).some((h) => inRing(lon, lat, h)))) return f.properties.id;
@@ -188,7 +228,7 @@
     meLayer.clearLayers();
     L.circle([lat, lon], { radius: acc, weight: 1, color: "#1a73e8", fillOpacity: 0.08, interactive: false }).addTo(meLayer);
     L.marker([lat, lon], { icon: L.divIcon({ className: "", iconSize: [16, 16], html: '<div class="me-dot"></div>' }), interactive: false }).addTo(meLayer);
-    map.setView([lat, lon], 12);
+    map.setView([lat, lon], NATION ? 8 : 12);
     const box = $("#me");
     box.hidden = false;
     box.textContent = "กำลังดึงพยากรณ์ที่ตำแหน่งของคุณ…";
@@ -216,6 +256,17 @@
     }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
   });
 
+  // Scope switch and the observed-rain toggle
+  document.querySelectorAll("#scope a").forEach((a) => a.setAttribute("aria-pressed", String((a.dataset.scope === "th") === NATION)));
+  if (NATION) {
+    document.querySelectorAll("[data-unit]").forEach((el) => { el.textContent = el.dataset.unit; });
+    $("#q").placeholder = "ค้นหาจังหวัดหรือภาค";
+    const box = $("#obsctl");
+    box.hidden = false;
+    obsLayer.addTo(map);
+    $("#obschk").addEventListener("change", () => ($("#obschk").checked ? obsLayer.addTo(map) : map.removeLayer(obsLayer)));
+  }
+
   // ------------------------------------------------------------- load
   async function load() {
     try {
@@ -229,11 +280,16 @@
       times = FC[0].time;
       paint(); renderTop(); renderNow();
       if (selected) select(selected);
+      if (NATION) loadObs();
       $("#updated").textContent = `พยากรณ์ ณ ${new Date().toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })} · เริ่ม ${fmtHour(times[0])}`;
     } catch (e) {
-      $("#updated").textContent = "โหลดพยากรณ์ไม่ได้: " + e.message;
+      // Open-Meteo answers a burst limit without CORS headers, which shows up as "Failed to fetch"
+      $("#updated").textContent = "โหลดพยากรณ์ไม่ได้ (" + e.message + ") · ลองใหม่อัตโนมัติใน 1 นาที";
+      clearTimeout(retry);
+      retry = setTimeout(load, 60000);
     }
   }
+  let retry = null;
   $("#reload").addEventListener("click", load);
   load();
   setInterval(load, 30 * 60 * 1000);
