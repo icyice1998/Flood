@@ -151,6 +151,7 @@
           lyr.bindTooltip(`${esc(f.properties.name)}${z ? " · " + LEVEL[z.level].th + " (" + z.score + ")" : ""}`, { sticky: true });
           lyr.on("click", () => openDistrict(f.properties.id, false));
         },
+        bubblingMouseEvents: false,
       }).addTo(layers.districts);
     }
     d.stations.canal.forEach((g) => {
@@ -433,7 +434,7 @@
         const c = DATA.canals.find((x) => x.name === f.properties.name);
         canalLayerByName[f.properties.name] = lyr;
         lyr.bindTooltip(`${esc(f.properties.name)}${c ? " · " + STATUS[c.status].th : ""}`, { sticky: true });
-        lyr.on("click", () => { selectTab("canals"); $("#cq").value = f.properties.name; $("#cstatus").value = ""; $("#cdist").value = ""; renderCanals(); focusCanal(f.properties.name, false); });
+        lyr.on("click", () => { selectTab("canals"); area = null; $("#cq").value = f.properties.name; $("#cstatus").value = ""; $("#cdist").value = ""; renderCanals(); focusCanal(f.properties.name, false); });
       },
     }).addTo(layers.canalLines);
     // alert stretches on top, worst drawn last
@@ -555,17 +556,33 @@
       </div></details>`;
   }
 
+  // Lists show the top 5 by severity; a search, a filter or a tapped area shows the matches instead
+  const TOP_N = 5;
+  let area = null;                       // district id picked on the map
+  const showAll = { d: false, c: false };
+  const areaName = () => (area && byId[area] ? byId[area].name : "");
+  const areaChip = () => (area ? `<span class="area-chip">📍 เขต${esc(areaName())} <button type="button" data-clear-area aria-label="ล้างพื้นที่">✕</button></span> ` : "");
+  function moreBar(kind, shown, total, what) {
+    if (shown >= total) return "";
+    return `<p class="topnote">แสดง ${shown} อันดับแรกจาก ${total} ${what} · พิมพ์ค้นหา หรือแตะพื้นที่บนแผนที่เพื่อดูรายการอื่น
+      <button type="button" class="linkish" data-show-all="${kind}">แสดงทั้งหมด</button></p>`;
+  }
+
   function renderDistricts() {
     const q = $("#dq").value.trim().toLowerCase();
     const prov = $("#dprov").value;
     const lv = $("#dlevel").value;
-    const list = DATA.districts.filter((z) =>
+    let list = DATA.districts.filter((z) =>
       (!q || z.name.includes(q) || (z.name_en || "").toLowerCase().includes(q)) &&
       (!prov || (prov === "bkk" ? z.province === "กรุงเทพมหานคร" : z.province !== "กรุงเทพมหานคร")) &&
       (!lv || z.level === lv));
-    $("#dlist").innerHTML = list.map(districtCard).join("") || `<p class="empty">ไม่พบเขตที่ตรงเงื่อนไข</p>`;
-    $("#dcount").textContent = `${list.length} เขต/อำเภอ`;
+    if (area) list = list.filter((z) => z.id === area);
+    const narrowed = q || prov || lv || area || showAll.d;
+    const shown = narrowed ? list : list.slice(0, TOP_N);
+    $("#dlist").innerHTML = shown.map(districtCard).join("") || `<p class="empty">ไม่พบเขตที่ตรงเงื่อนไข</p>`;
+    $("#dcount").innerHTML = `${areaChip()}${narrowed ? `${list.length} เขต/อำเภอ` : ""}` + (narrowed ? "" : moreBar("d", shown.length, list.length, "เขต/อำเภอ"));
     document.querySelectorAll("#dlist .zoom").forEach((b) => b.addEventListener("click", () => zoomDistrict(b.dataset.id)));
+    if (area) { const el = document.getElementById("z-" + area); if (el) el.open = true; }
   }
 
   function renderCanals() {
@@ -577,10 +594,14 @@
       const ds = [...new Set(DATA.canals.flatMap((c) => c.districts))].sort((a, b) => a.localeCompare(b, "th"));
       sel.insertAdjacentHTML("beforeend", ds.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join(""));
     }
-    const list = DATA.canals.filter((c) => (!q || c.name.includes(q) || c.districts.some((d) => d.includes(q))) &&
+    const inArea = areaName();
+    const all = DATA.canals.filter((c) => (!q || c.name.includes(q) || c.districts.some((d) => d.includes(q))) &&
       (!st || (st === "alert" ? ["overbank", "critical", "warning"].includes(c.status) : c.status === st)) &&
-      (!dist || c.districts.includes(dist)));
-    $("#ccount").textContent = `${list.length} คลอง/แม่น้ำ · แตะแถวเพื่อดูเส้นคลองและจุดวัดบนแผนที่`;
+      (!dist || c.districts.includes(dist)) && (!inArea || c.districts.includes(inArea)));
+    const narrowed = q || dist || inArea || showAll.c;
+    const list = narrowed ? all : all.slice(0, TOP_N);
+    $("#ccount").innerHTML = `${areaChip()}${narrowed ? `${all.length} คลอง/แม่น้ำ · ` : ""}แตะแถวเพื่อดูเส้นคลองและจุดวัดบนแผนที่` +
+      (narrowed ? "" : moreBar("c", list.length, all.length, "คลอง/แม่น้ำ"));
     $("#clist").innerHTML = `<table class="canals"><tr><th>คลอง</th><th>สถานะ</th><th>จุดที่หนักสุด</th></tr>
       ${list.map((c) => {
         const w = c.worst;
@@ -703,12 +724,29 @@
     if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
 
+  // The Traffy canvas layer sits above the district polygons and swallows their clicks, so a tap that
+  // reaches the map is matched to a district by point-in-polygon instead
+  map.on("click", (e) => {
+    if (!GEO || !map.hasLayer(layers.districts)) return;
+    const z = districtAt(e.latlng.lat, e.latlng.lng);
+    if (z) openDistrict(z);
+  });
+
+  // Tapping an area on the map narrows the district and canal lists to it
   function openDistrict(id) {
-    selectTab("districts");
-    $("#dq").value = ""; $("#dprov").value = ""; $("#dlevel").value = ""; renderDistricts();
+    area = id;
+    const tab = document.querySelector(".tabs button[aria-selected='true']")?.dataset.tab;
+    if (tab !== "canals") selectTab("districts");
+    $("#dq").value = ""; $("#dprov").value = ""; $("#dlevel").value = ""; $("#cq").value = ""; $("#cdist").value = "";
+    renderDistricts(); renderCanals();
     const el = document.getElementById("z-" + id);
-    if (el) { el.open = true; el.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    if (el && tab !== "canals") { el.open = true; el.scrollIntoView({ behavior: "smooth", block: "start" }); }
   }
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-clear-area]")) { area = null; renderDistricts(); renderCanals(); return; }
+    const more = e.target.closest("[data-show-all]");
+    if (more) { showAll[more.dataset.showAll] = true; more.dataset.showAll === "d" ? renderDistricts() : renderCanals(); }
+  });
 
   function selectTab(name) {
     document.querySelectorAll(".tabs button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
@@ -716,8 +754,8 @@
     pref("fw-tab", name);
   }
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
-  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", renderDistricts));
-  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", renderCanals));
+  ["#dq", "#dprov", "#dlevel"].forEach((s) => $(s)?.addEventListener("input", () => { if (s === "#dq") area = null; renderDistricts(); }));
+  ["#cq", "#cstatus", "#cdist"].forEach((s) => $(s)?.addEventListener("input", () => { if (s !== "#cstatus") area = null; renderCanals(); }));
   ["#rq", "#rcolor", "#rofficial"].forEach((s) => $(s)?.addEventListener("input", renderRoads));
   $("#nq")?.addEventListener("input", renderNews);
   $("#ntime")?.addEventListener("input", () => setTimeWin($("#ntime").value));

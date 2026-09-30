@@ -115,6 +115,27 @@ A one-page list and map of main roads that are likely flooded, in the style of "
 - **Traffy filter.** Only Traffy reports whose text mentions water, flooding or drainage are counted.
 - **Limits.** This is based on reports, not live traffic speed; Google Maps traffic colours have no free API.
 
+## Water mass tracker (`rivers.html`)
+
+A live, nationwide view of where the water is in the main rivers.
+
+- **Data.** The browser reads ThaiWater's `waterlevel_load` directly: about 800 telemetry stations with river name, % of bank capacity (`storage_percent`), current and previous level, and discharge. It refreshes every 15 min.
+- **Map.**
+  - Heatmap weighted by % capacity; only stations at ≥50% contribute, so hot spots mark where the water mass is.
+  - Station dots coloured by ThaiWater class: very low <10, low <30, normal <70, high <100, overbank ≥100%.
+  - ▲/▼ show the change since the previous reading.
+- **Rivers.** Ping, Wang, Yom, Nan, Chao Phraya, Pa Sak, Noi, Tha Chin, Mae Klong, Kwae Noi, Bang Pakong, Nakhon Nayok, Mun and Chi.
+  - Each is ranked by its fullest station and shows a source-to-mouth strip.
+  - Tapping a river opens its longitudinal profile (bars per station, a bank line and rising markers), a station table, and the river's path on the map.
+- **Also.** A summary by region, station search, and a toggle between main rivers and all stations.
+
+## Top-5 lists on the main page
+
+The district and canal/river tabs show only the top 5 by severity. To see more:
+- type a search or set a filter, which lists every match;
+- press "แสดงทั้งหมด";
+- or tap an area on the map. The tap is matched to a district by point-in-polygon, because the Traffy canvas layer sits above the district polygons. Both tabs then narrow to that district, under a "📍 เขต…" chip with ✕ to clear it.
+
 ## Update schedule
 
 GitHub's cron is best-effort and on a new repo may fire only every few hours.

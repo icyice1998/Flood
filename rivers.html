@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher ติดตามมวลน้ำ</title>
+<meta name="description" content="ติดตามมวลน้ำในแม่น้ำสายหลักทั่วประเทศ ปิง วัง ยม น่าน เจ้าพระยา ป่าสัก จากสถานีโทรมาตร ThaiWater แบบเรียลไทม์">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="rivers.css?v=1">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>ติดตามมวลน้ำ</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a><a href="rivers.html" aria-current="page">🌊 ติดตามมวลน้ำ</a></nav>
+  </div>
+  <div class="status"><span id="updated">กำลังโหลด…</span><button id="reload" type="button">รีเฟรช</button></div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <div class="rv-sum" id="sum"></div>
+
+      <h3 class="rh">มวลน้ำตามแม่น้ำ <small>แตะเพื่อดูแนวลำน้ำ ต้นน้ำ → ปลายน้ำ</small></h3>
+      <div class="rv-rivers" id="rivers"></div>
+
+      <div id="profile" class="rv-profile" hidden></div>
+
+      <h3 class="rh">ตามภาค</h3>
+      <div id="regions"></div>
+
+      <h3 class="rh">ค้นหาสถานี</h3>
+      <div class="filters"><input id="q" type="search" placeholder="ชื่อสถานี แม่น้ำ หรือจังหวัด" aria-label="ค้นหาสถานี"></div>
+      <ul class="rv-found" id="found"></ul>
+
+      <details class="how">
+        <summary>อ่านค่าอย่างไร</summary>
+        <ul>
+          <li>ข้อมูลสดจากสถานีโทรมาตรทั่วประเทศ (ThaiWater / สสน. ร่วมกับกรมชลประทานและหน่วยงานอื่น) ดึงจากเบราว์เซอร์ทุก 15 นาที</li>
+          <li><b>% ความจุลำน้ำ</b> = ระดับน้ำเทียบกับตลิ่ง: น้อยวิกฤต &lt;10% · น้อย 10–30% · ปกติ 30–70% · มาก 70–100% · ล้นตลิ่ง &gt;100%</li>
+          <li><b>Heatmap</b> ถ่วงน้ำหนักตาม % ความจุ แสดงเฉพาะสถานีที่ ≥50% จุดร้อนสีแดงคือบริเวณที่มวลน้ำกำลังเต็มตลิ่งหรือล้น</li>
+          <li><b>▲/▼</b> เทียบระดับน้ำกับค่าก่อนหน้าของสถานีเดียวกัน (โดยทั่วไป 1 ชม.) ใช้ดูว่ามวลน้ำกำลังเคลื่อนเข้าหรือผ่านไปแล้ว</li>
+          <li>แนวลำน้ำเรียงสถานีจากต้นน้ำลงไปปลายน้ำ ยอดของกราฟคือตำแหน่งที่มวลน้ำหนาแน่นที่สุดตอนนี้ น้ำจากปิง วัง ยม น่าน ไหลรวมเป็นเจ้าพระยาที่นครสวรรค์ แล้วลงสู่กรุงเทพฯ</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่มวลน้ำ"></div>
+    <div class="rv-ctl" id="ctl">
+      <label><input type="checkbox" id="heat" checked> Heatmap</label>
+      <label><input type="checkbox" id="dots" checked> สถานี</label>
+      <label><input type="checkbox" id="mainonly" checked> เฉพาะแม่น้ำสายหลัก</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="rivers.js?v=1"></script>
+</body>
+</html>
