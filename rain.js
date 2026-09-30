@@ -91,6 +91,7 @@
     const top = OBS.reduce((a, b) => (b.mm > a.mm ? b : a));
     return `<br>☔ ตกแล้ว 24 ชม. (ThaiWater ${OBS.length} สถานี): สูงสุด <b>${top.mm.toFixed(1)} มม.</b> ที่ ${esc(top.name)} (${esc(top.province)}) · หนักมาก &gt;90 มม. ${OBS.filter((r) => r.mm > 90).length} สถานี`;
   }
+  let obsRetry = null;
   async function loadObs() {
     if (!NATION || !window.TW) return;
     try {
@@ -101,7 +102,11 @@
       OBS.filter((r) => r.mm >= 35).forEach((r) => L.circleMarker([r.lat, r.lon], { radius: 3.5, color: "#fff", weight: 0.6, fillColor: TW.cls(TW.RAIN, r.mm).hex, fillOpacity: 0.95 })
         .bindPopup(`<b>${esc(r.name)}</b><br>${esc(r.province)}<br>ฝนตกแล้ว 24 ชม. <b>${r.mm.toFixed(1)} มม.</b><br><small>${esc(r.time)} · ThaiWater</small>`).addTo(obsLayer));
       if (FC) { renderNow(); renderTop(); }
-    } catch (e) { OBS = []; }
+    } catch (e) {
+      OBS = [];
+      clearTimeout(obsRetry);
+      obsRetry = setTimeout(loadObs, 60000);
+    }
   }
 
   function renderNow() {

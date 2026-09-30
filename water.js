@@ -149,9 +149,12 @@
     if (rain.status === "fulfilled") DATA.rain = rain.value; else errs.push("ฝน");
     drawMap(); renderSum(); renderGroups(); renderDams();
     const damDate = DATA.dams.large.map((d) => d.date).sort().pop();
-    $("#updated").textContent = (errs.length ? `โหลดไม่ได้: ${errs.join(", ")} · ` : "") +
+    $("#updated").textContent = (errs.length ? `โหลดไม่ได้: ${errs.join(", ")} (ลองใหม่อัตโนมัติใน 1 นาที) · ` : "") +
       `เขื่อน ${damDate || "–"} · แม่น้ำ ${DATA.river.length} สถานี · ฝน ${DATA.rain.length} สถานี`;
+    clearTimeout(retry);
+    if (errs.length) retry = setTimeout(load, 60000);
   }
+  let retry = null;
   $("#reload").addEventListener("click", load);
   load();
   setInterval(load, REFRESH_MIN * 60000);

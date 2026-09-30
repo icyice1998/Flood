@@ -5,7 +5,9 @@ window.TW = (() => {
   const API = "https://api-v3.thaiwater.net/api/v1/thaiwater30/";
   const num = (x) => (x == null || x === "" ? null : +x);
   const th = (o) => (o && (o.th || o.en)) || "";
-  // ThaiWater rate-limits bursts (HTTP 429), so requests go one at a time and a 429 is retried with backoff
+  // ThaiWater rate-limits bursts (HTTP 429), so requests go one at a time and a 429 is retried with backoff.
+  // Some throttled answers come without CORS headers and surface as a network error ("Failed to fetch"),
+  // so those are retried the same way.
   let queue = Promise.resolve();
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function fetchRetry(path) {
@@ -13,12 +15,15 @@ window.TW = (() => {
       if (wait) await sleep(wait);
       // 5-minute cache key: quick reloads share the browser cache, data still refreshes
       // ThaiWater throttles requests whose Referer is another site (HTTP 429); CORS only needs Origin
-      const r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / 300000), { referrerPolicy: "no-referrer" });
+      let r;
+      try {
+        r = await fetch(API + path + (path.includes("?") ? "&" : "?") + "t=" + Math.floor(Date.now() / 300000), { referrerPolicy: "no-referrer" });
+      } catch (e) { continue; }
       if (r.status === 429 || r.status === 503) continue;
       if (!r.ok) throw new Error(`ThaiWater ${path}: HTTP ${r.status}`);
       return r.json();
     }
-    throw new Error("ThaiWater ไม่ว่าง (HTTP 429) ลองใหม่อีกครั้งภายหลัง");
+    throw new Error("ThaiWater ไม่ว่างหรือเชื่อมต่อไม่ได้");
   }
   const get = (path) => {
     const job = queue.then(() => fetchRetry(path));

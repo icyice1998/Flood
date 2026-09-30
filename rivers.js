@@ -221,9 +221,12 @@
       TW.dams().then((d) => { DAMS = d.large; drawDams(); renderDamList(); if (sel) renderProfile(sel); }).catch(() => {});
       if (sel) renderProfile(sel);
     } catch (e) {
-      $("#updated").textContent = "โหลดข้อมูล ThaiWater ไม่ได้: " + e.message;
+      $("#updated").textContent = "โหลดข้อมูล ThaiWater ไม่ได้: " + e.message + " · ลองใหม่อัตโนมัติใน 1 นาที";
+      clearTimeout(retry);
+      retry = setTimeout(load, 60000);
     }
   }
+  let retry = null;
   $("#reload").addEventListener("click", load);
   load();
   setInterval(load, REFRESH_MIN * 60000);
