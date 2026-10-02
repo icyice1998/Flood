@@ -84,7 +84,7 @@
   syncEvZoom();
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 18,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer · กล้อง: Longdo Traffic, iTIC, กรมทางหลวง',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · ThaiWater, สำนักการระบายน้ำ กทม., Open-Meteo, GloFAS, RainViewer · กล้อง: Longdo Traffic, iTIC, กรมทางหลวง, BMA Traffic ผ่าน <a href="https://cctv.maholan.net/">cctv.maholan.net</a>',
   }).addTo(map);
 
   const layers = {
@@ -96,6 +96,7 @@
     highlight: L.layerGroup().addTo(map),
     me: L.layerGroup().addTo(map),
     cctv: L.layerGroup().addTo(map),
+    bma: L.layerGroup().addTo(map),
     canalLines: L.layerGroup().addTo(map),
     roadLines: L.layerGroup().addTo(map),
     events: L.layerGroup().addTo(map),
@@ -116,6 +117,7 @@
     "ประกาศเตือนภัย (จากข่าว)": layers.warnings,
     "Traffy Fondue (ประชาชนแจ้งน้ำท่วม)": layers.traffy,
     "กล้อง CCTV (ภาพสด)": layers.cctv,
+    "กล้อง กทม. / BMA Traffic (ซูมเข้าเพื่อดู · 💧AI = ตรวจพบน้ำท่วม)": layers.bma,
     "เรดาร์ฝน": layers.radar,
   }, { collapsed: window.innerWidth < 800 }).addTo(map);
 
@@ -275,19 +277,45 @@
     });
   }
 
-  function camsNear(lat, lon, km, max) {
-    return (DATA && DATA.cameras || []).filter((c) => c.live)
-      .map((c) => ({ c, d: kmBetween(lat, lon, c.lat, c.lon) }))
-      .filter((x) => x.d <= km).sort((a, b) => a.d - b.d).slice(0, max);
+  // BMA traffic / city cameras (snapshots via cctv.maholan.net, see cctv.js); dots appear from BMA_MIN_ZOOM
+  const BMA_MIN_ZOOM = 13;
+  let bmaMarkers = {}, bmaLoaded = 0;
+  const syncBmaZoom = () => { const p = map.getPane("cctvPane"); if (p) p.style.display = map.getZoom() < BMA_MIN_ZOOM ? "none" : ""; };
+  map.on("zoomend", syncBmaZoom);
+  async function loadBma() {
+    if (!window.CCTV || Date.now() - bmaLoaded < 10 * 60000) return;
+    try {
+      const d = await CCTV.load();
+      bmaLoaded = Date.now();
+      layers.bma.clearLayers();
+      const { group, markers } = CCTV.layer(map, d.cameras);
+      bmaMarkers = markers;
+      group.addTo(layers.bma);
+      syncBmaZoom();
+      renderDistricts();
+      renderMine();
+    } catch (e) { console.warn("cctv", e); }
   }
-  const camButtons = (list) => list.map(({ c, d }) =>
-    `<button type="button" class="camlink" data-cam="${esc(c.id)}">📹 ${esc(c.title)}${d != null ? ` <small>· ${d.toFixed(1)} กม.</small>` : ""}</button>`).join("");
+
+  // Nearest cameras: live HLS first, then city snapshot cameras
+  function camsNear(lat, lon, km, max) {
+    const hls = (DATA && DATA.cameras || []).filter((c) => c.live)
+      .map((c) => ({ c, d: kmBetween(lat, lon, c.lat, c.lon) }))
+      .filter((x) => x.d <= km).sort((a, b) => a.d - b.d);
+    const bma = window.CCTV ? CCTV.near(lat, lon, km, max).map((x) => ({ ...x, bma: true }))
+      .sort((a, b) => !!b.c.ai - !!a.c.ai || a.d - b.d) : [];
+    return [...hls.slice(0, Math.min(2, max)), ...bma].slice(0, max);
+  }
+  const camButtons = (list) => list.map(({ c, d, bma }) =>
+    `<button type="button" class="camlink" data-cam="${esc(c.id)}">${bma ? (c.ai ? "💧" : "📷") : "📹"} ${esc(c.title || c.name)}${d != null ? ` <small>· ${d.toFixed(1)} กม.${bma ? " · กทม." : ""}</small>` : ""}</button>`).join("");
 
   function openCamera(id) {
-    const m = camMarkers[id];
+    const bma = !camMarkers[id];
+    const m = camMarkers[id] || bmaMarkers[id];
     if (!m) return;
-    if (!map.hasLayer(layers.cctv)) layers.cctv.addTo(map);
-    map.setView(m.getLatLng(), Math.max(map.getZoom(), 15));
+    const lyr = bma ? layers.bma : layers.cctv;
+    if (!map.hasLayer(lyr)) lyr.addTo(map);
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), bma ? 16 : 15));
     m.openPopup();
     if (window.innerWidth < 800) $("#map").scrollIntoView({ behavior: "smooth" });
   }
@@ -550,7 +578,7 @@
         ${EVIDENCE.map(([k, label]) => `<h4>${label}</h4>${evidenceList(z.evidence[k])}`).join("")}
         ${z.notes.map((n) => `<p class="empty">${esc(n)}</p>`).join("")}
         <div class="advice"><b>ควรทำอะไร:</b> ${esc(z.advice)}</div>
-        ${(() => { const cams = camsNear(z.lat, z.lon, 5, 3);
+        ${(() => { const cams = camsNear(z.lat, z.lon, 3, 4);
           return cams.length ? `<h4>กล้อง CCTV ใกล้เขตนี้ (ดูภาพสดเพื่อยืนยันน้ำท่วม)</h4><div class="cams">${camButtons(cams)}</div>` : ""; })()}
         <button type="button" class="zoom" data-id="${esc(z.id)}">ดูบนแผนที่</button>
       </div></details>`;
@@ -841,8 +869,8 @@
         `<li>${esc(g.name)} — <b style="color:${STATUS[g.status].hex}">${STATUS[g.status].th}</b> <small>${d.toFixed(1)} กม. · ${fmtTime(g.time)}</small></li>`).join("")}</ul>`
         : `<p class="meta">ไม่มีจุดวัดระดับน้ำในรัศมี 3 กม.</p>`}
       ${rain ? `<div class="meta">ฝนใกล้สุด: ${esc(rain.r.name)} (${rain.d.toFixed(1)} กม.) · 1 ชม. ${rain.r.rain_1h ?? "–"} มม. · 24 ชม. ${rain.r.rain_24h ?? "–"} มม.</div>` : ""}
-      ${(() => { const cams = camsNear(lat, lon, 5, 2);
-        return cams.length ? `<b style="font-size:.85rem">กล้อง CCTV ใกล้คุณ</b><div class="cams">${camButtons(cams)}</div>` : `<div class="meta">ไม่มีกล้อง CCTV ที่ออนไลน์ในรัศมี 5 กม.</div>`; })()}
+      ${(() => { const cams = camsNear(lat, lon, 3, 4);
+        return cams.length ? `<b style="font-size:.85rem">กล้อง CCTV ใกล้คุณ</b><div class="cams">${camButtons(cams)}</div>` : `<div class="meta">ไม่มีกล้อง CCTV ในรัศมี 3 กม.</div>`; })()}
       <div class="row">${z ? `<button type="button" data-act="detail">ดูรายละเอียดเขต</button>` : ""}
         <button type="button" data-act="center">กลับไปที่ตำแหน่ง</button><button type="button" data-act="stop">ปิด GPS</button></div>`;
     box.querySelector('[data-act="detail"]')?.addEventListener("click", () => openDistrict(id));
@@ -943,6 +971,7 @@
         try { fn(); } catch (err) { console.error(fn.name, err); }
       }
       loadTraffy();
+      loadBma();
       const ageMin = (Date.now() - new Date(DATA.generated_at)) / 60000;
       $("#updated").textContent = `อัปเดต ${fmtTime(DATA.generated_at)} (${ago(DATA.generated_at)})`;
       const banner = $("#banner");

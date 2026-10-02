@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floodwatcher แผนที่จราจร</title>
+<meta name="description" content="แผนที่จราจรกรุงเทพฯ: กล้อง CCTV กทม. (BMA Traffic) กว่า 1,600 ตัว กล้องสด iTIC และเหตุบนถนนจาก Longdo Traffic">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="rivers.css?v=2">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Floodwatcher <span>แผนที่จราจร</span></h1>
+    <nav class="pages"><a href="./">แผนที่น้ำท่วม</a><a href="traffic.html" aria-current="page">🚦 แผนที่จราจร</a><a href="rain.html">🌧 พยากรณ์ฝน</a><a href="avoid.html">🚫 ถนนที่ควรเลี่ยง</a><a href="rivers.html">🌊 ติดตามมวลน้ำ</a><a href="water.html">💧 น้ำทั่วประเทศ</a></nav>
+  </div>
+  <div class="status"><span id="updated">กำลังโหลด…</span><button id="reload" type="button">รีเฟรช</button></div>
+</header>
+
+<main class="layout">
+  <aside class="panel">
+    <section class="tab">
+      <div class="rv-sum" id="sum"></div>
+      <button type="button" id="gps" class="gpsbtn">📍 กล้องใกล้ฉัน</button>
+
+      <h3 class="rh">ภาพกล้องในกรอบแผนที่ <small id="wallnote"></small></h3>
+      <div class="tf-wall" id="wall"></div>
+
+      <h3 class="rh">ค้นหากล้อง</h3>
+      <div class="filters"><input id="q" type="search" placeholder="ชื่อแยก ถนน หรือเขต" aria-label="ค้นหากล้อง"></div>
+      <div class="tf-orgs" id="orgs"></div>
+      <ul class="rv-found" id="found"></ul>
+
+      <h3 class="rh">เหตุบนถนนตอนนี้ <small>(Longdo Traffic / iTIC · สด)</small></h3>
+      <ul class="rv-found" id="events"></ul>
+
+      <h3 class="rh">ดูสภาพจราจรเพิ่มเติม</h3>
+      <ul class="links">
+        <li><a href="https://www.google.com/maps/@13.7563,100.5418,12z/data=!5m1!1e1" target="_blank" rel="noopener">Google Maps ชั้นจราจร</a> <small>(สีถนนตามความเร็วรถ)</small></li>
+        <li><a href="https://traffic.longdo.com/" target="_blank" rel="noopener">Longdo Traffic</a> <small>(สภาพจราจรและกล้อง iTIC)</small></li>
+        <li><a href="http://www.bmatraffic.com/" target="_blank" rel="noopener">BMA Traffic</a> <small>(เว็บกล้อง กทม. ต้นฉบับ เปิดได้เฉพาะเน็ตในไทย)</small></li>
+        <li><a href="https://cctv.maholan.net/" target="_blank" rel="noopener">Flood CCTV Thailand</a> <small>(ดูหลายกล้องพร้อมกัน, วิดีโอสด)</small></li>
+      </ul>
+
+      <details class="how">
+        <summary>ข้อมูลและวิธีใช้</summary>
+        <ul>
+          <li>จุดสีบนแผนที่คือกล้อง กทม. และปริมณฑล แตะเพื่อดูภาพล่าสุด ภาพอัปเดตทุก 15 วินาทีขณะเปิดดู</li>
+          <li>BMA Traffic (bmatraffic.com) เปิดแบบ http และรับเฉพาะเน็ตในไทย เว็บนี้จึงแสดงภาพผ่าน cctv.maholan.net ซึ่งส่งต่อภาพจาก BMA Traffic, floodbkk, กรมทางหลวง และ iTIC แบบ https</li>
+          <li><b>💧AI</b> = กล้องที่ระบบ AI ของ cctv.maholan.net ตรวจพบน้ำท่วมบนถนนจากภาพล่าสุด ควรเปิดดูภาพยืนยันเสมอ</li>
+          <li>📹 = กล้องวิดีโอสดของ iTIC / กรมทางหลวง (จาก Longdo Traffic)</li>
+          <li>เหตุบนถนนดึงสดจาก Longdo Traffic ทุก 5 นาที (อุบัติเหตุ รถเสีย ปิดถนน เบี่ยงการจราจร น้ำท่วม)</li>
+        </ul>
+      </details>
+    </section>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" aria-label="แผนที่จราจร"></div>
+    <div class="rv-ctl">
+      <label><input type="checkbox" id="c-bma" checked> กล้อง กทม.</label>
+      <label><input type="checkbox" id="c-hls" checked> 📹 กล้องสด</label>
+      <label><input type="checkbox" id="c-ev" checked> เหตุจราจร</label>
+      <label><input type="checkbox" id="c-flood"> น้ำท่วมบนถนน</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.20/hls.min.js" defer></script>
+<script src="cctv.js?v=1"></script>
+<script src="traffic.js?v=1"></script>
+</body>
+</html>

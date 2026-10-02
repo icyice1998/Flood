@@ -78,6 +78,21 @@ popup is open. District cards and the GPS card list cameras within 5 km, to
 help confirm flooding by eye. This is not an official open API and has no
 published terms; credit is shown on the map.
 
+## BMA traffic cameras and the traffic map
+
+`traffic.html` (🚦 แผนที่จราจร) and the flood map show about 1,650 city
+cameras in Greater Bangkok: BMA traffic cameras (สจส., bmatraffic.com), the
+BMA flood-watch cameras, Department of Highways and iTIC. bmatraffic.com
+serves plain http and only answers Thai networks, so an https page cannot show
+it directly. Frames are loaded from cctv.maholan.net, which proxies those feeds
+over https and also runs an AI flood check on each frame (shown as 💧AI).
+`fetch_data.py` saves the camera list to `data/cctv.json` (list refreshed every
+6 hours, AI flags every run). Frames load only while a camera popup is open or
+in the traffic page's 8-tile wall. On the flood map the camera dots appear from
+zoom 13; district and GPS cards list the nearest cameras. Road events on the
+traffic page come live from the Longdo Traffic event feed. Credit is shown on
+both maps.
+
 ## Traffy Fondue and complaint channels
 
 - **Traffy Fondue.** `fetch_data.py` reads the Traffy Fondue public API (`publicapi.traffy.in.th/share/teamchadchart/search`, category น้ำท่วม).
