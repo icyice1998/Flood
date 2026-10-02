@@ -184,6 +184,7 @@ th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line
 .cam-pop small { color: #5d6b7a; }
 .cam-video { position: relative; margin: 6px 0; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; }
 .cam-video video { width: 100%; height: 100%; display: block; }
+.cam-msg[hidden] { display: none; }
 .cam-msg { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 13px; text-align: center; padding: 8px; }
 .cams { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 6px; }
 .camlink { text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--accent); border-radius: 6px; padding: 4px 8px; font-size: .85rem; }
@@ -221,3 +222,30 @@ dialog.report .note { color: var(--muted); font-size: .82rem; margin: 4px 0; }
 .area-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: #fff; border-radius: 999px; padding: 1px 4px 1px 10px; font-size: .8rem; margin-right: 6px; }
 .area-chip button { border: 0; background: rgba(255,255,255,.25); color: #fff; border-radius: 50%; width: 20px; height: 20px; font-size: .7rem; padding: 0; }
 .topnote { margin: 4px 0 0; font-size: .8rem; color: var(--muted); }
+
+/* City / BMA traffic cameras (cctv.js) */
+.cc-frame { background: #111; }
+.cc-frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.cc-ai { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: #e3f2fd; color: #0d47a1; font-size: 13px; }
+.cc-ai-pin { width: 40px; height: 20px; border-radius: 10px; background: #1565c0; color: #fff; font: 600 11px/20px Sarabun, sans-serif;
+  text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.4); border: 1.5px solid #fff; }
+.cc-ai-pin.moderate { background: #ef6c00; }
+.cc-ai-pin.severe { background: #c62828; }
+
+/* Traffic map page */
+.tf-wall { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.tf-tile { position: relative; padding: 0; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #111; aspect-ratio: 16 / 10; cursor: pointer; }
+.tf-tile.ai { box-shadow: 0 0 0 2px #c62828 inset; }
+.tf-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tf-tile img.err { visibility: hidden; }
+.tf-tile span { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 5px; background: rgba(0,0,0,.6); color: #fff; font-size: .72rem; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-orgs { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0; font-size: .8rem; }
+.tf-orgs small { color: var(--muted); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+.muted { color: var(--muted); }
+.rv-found .more button, .tab .note + .more { width: 100%; }
+.rv-found .more { cursor: default; }
+.rv-found .more button { border: 1px dashed var(--line); background: none; color: var(--accent); border-radius: 8px; padding: 5px; font: inherit; font-size: .85rem; }
+.tab .note { color: var(--muted); font-size: .8rem; }
+.tab .gpsbtn, #gps.gpsbtn { width: 100%; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); border-radius: 8px; padding: 7px; font-weight: 600; margin: 8px 0; }

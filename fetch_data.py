@@ -29,6 +29,7 @@ NOW = datetime.now(TZ)
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "data", "latest.json")
 TRAFFY_OUT = os.path.join(HERE, "data", "traffy.json")
+CCTV_OUT = os.path.join(HERE, "data", "cctv.json")
 DISTRICTS = os.path.join(HERE, "data", "districts.geojson")
 UA = "Floodwatcher/1.0 (+https://github.com/icyice1998/Flood)"
 
@@ -699,6 +700,56 @@ def fetch_cameras(districts):
     return out
 
 
+# BMA traffic (สจส.) and flood cameras via cctv.maholan.net. bmatraffic.com serves plain http and only
+# answers Thai networks, so the browser cannot show it on an https page; maholan proxies the frames over
+# https. The list barely changes, so it is pulled every CCTV_LIST_H hours; AI flood flags every run.
+CCTV_BASE = "https://cctv.maholan.net"
+CCTV_LIST_H = 6
+CCTV_SRC = [("BMA", "กทม. (สจส.)"), ("floodbkk", "กทม. (เฝ้าระวังน้ำท่วม)"), ("สำนักการระบายน้ำ", "สำนักการระบายน้ำ กทม."),
+            ("DOH", "กรมทางหลวง"), ("iTIC", "iTIC"), ("nonthaburi", "นนทบุรี"), ("dwr", "กรมทรัพยากรน้ำ")]
+
+
+def fetch_bma_cctv(districts):
+    sid, label = "maholan-cctv", "กล้อง กทม. / BMA Traffic (ผ่าน cctv.maholan.net)"
+    old = {}
+    try:
+        with open(CCTV_OUT, encoding="utf-8") as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        pass
+    cams, list_at = old.get("cameras") or [], old.get("list_at")
+    fresh = list_at and (NOW - datetime.fromisoformat(list_at)) < timedelta(hours=CCTV_LIST_H)
+    if not (cams and fresh):
+        try:
+            raw = json.loads(http_get(CCTV_BASE + "/api/cameras", timeout=60))["cameras"]
+            out = []
+            for c in raw:
+                lat, lon = fnum(c.get("lat")), fnum(c.get("lng"))
+                if not in_bbox(lat, lon) or c.get("type") not in ("snapshot", "hls", "mjpeg") or not c.get("configured", True):
+                    continue
+                src = c.get("source") or ""
+                org = next((v for k, v in CCTV_SRC if k in src), "อื่นๆ")
+                out.append({"id": c["id"], "name": re.sub(r"\s+", " ", c.get("name") or "").strip(), "lat": round(lat, 5), "lon": round(lon, 5),
+                            "district": district_of(districts, None, None, lat, lon) or c.get("district") or "", "org": org})
+            if out:
+                cams, list_at = out, NOW.isoformat(timespec="minutes")
+        except Exception as e:  # noqa: BLE001 - keep the previous list
+            record(sid, label, CCTV_BASE, bool(cams), len(cams), list_at, error=str(e)[:200], kind="cctv")
+    ai = {}
+    try:
+        for d in json.loads(http_get(CCTV_BASE + "/api/detections", timeout=30)).get("detections", []):
+            if d.get("flood") and d.get("level") in ("minor", "moderate", "severe"):
+                ai[d["id"]] = {"level": d.get("level"), "conf": d.get("confidence"), "note": (d.get("note") or "")[:160],
+                               "at": datetime.fromtimestamp(d["at"] / 1000, TZ).isoformat(timespec="minutes") if d.get("at") else None}
+    except Exception as e:  # noqa: BLE001
+        log(f"maholan detections: {e}")
+    if cams:
+        record(sid, label, CCTV_BASE, True, len(cams), list_at, kind="cctv", extra={"ai_flood": len(ai)})
+    return {"generated_at": NOW.isoformat(timespec="seconds"), "list_at": list_at, "base": CCTV_BASE,
+            "note": "Snapshots are proxied by cctv.maholan.net from BMA Traffic, floodbkk, DOH and iTIC. AI flood flags by that site.",
+            "cameras": cams, "ai": ai}
+
+
 def fetch_gdacs():
     sid, url = "gdacs", "https://www.gdacs.org/xml/rss.xml"
     g = "{http://www.gdacs.org}"
@@ -944,6 +995,7 @@ def main():
             deduped.append(n)
     gdacs = fetch_gdacs()
     cameras = fetch_cameras(districts)
+    cctv = fetch_bma_cctv(districts)
     events = fetch_events(districts)
     traffy = fetch_traffy(districts)
 
@@ -972,6 +1024,7 @@ def main():
         "news_filtered": rejected,
         "official": gdacs,
         "cameras": cameras,
+        "cctv": {"file": "data/cctv.json", "count": len(cctv["cameras"]), "ai_flood": len(cctv["ai"])},
         "events": events,
         "traffy": {"file": "data/traffy.json", "count": len(traffy), "open": sum(t["state"] != "done" for t in traffy),
                    "hours": TRAFFY_HOURS},
@@ -983,6 +1036,9 @@ def main():
                    "photo_base": TRAFFY_PHOTO, "link_base": "https://share.traffy.in.th/teamchadchart/", "reports": traffy},
                   f, ensure_ascii=False, separators=(",", ":"))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    if cctv["cameras"]:
+        with open(CCTV_OUT, "w", encoding="utf-8") as f:
+            json.dump(cctv, f, ensure_ascii=False, separators=(",", ":"))
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
     ok = sum(s["ok"] for s in sources.values())
